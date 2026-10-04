@@ -1,4 +1,4 @@
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,18 +60,27 @@ $('#sync').onclick = () => {
   if (url.trim() !== (c.url || '')) { cursor = 0; } // 換後端要重新拉取全部
   LS('lh_cfg', { url: url.trim(), token: token.trim() }); persist(); sync();
 };
-$('h1').title = 'LifeHub v' + APP_VERSION; $('h1').style.cursor = 'pointer'; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
+$('h1').title = 'LifeHub v' + APP_VERSION; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
 setInterval(sync, 15000); addEventListener('online', sync); document.addEventListener('visibilitychange', () => !document.hidden && sync());
 
 
 // ---------- 導覽 ----------
-const TABS = [['home', '📊', '今日'], ['bujo', '📓', '子彈'], ['fit', '🏃', '運動'], ['fin', '💰', '財務'], ['know', '🧠', '知識']];
+const IC = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICON = {
+  home: IC('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'),
+  bujo: IC('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".9"/><circle cx="4.5" cy="12" r=".9"/><circle cx="4.5" cy="18" r=".9"/>'),
+  fit: IC('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
+  fin: IC('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/>'),
+  know: IC('<path d="M12 6c-2-1.5-5-2-8-2v14c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2z"/><path d="M12 6v14"/>')
+};
+const TABS = [['home', '今日', 'Today'], ['bujo', '子彈', 'Bullet Journal'], ['fit', '運動', 'Movement'], ['fin', '財務', 'Finance'], ['know', '知識', 'Knowledge']];
 let tab = 'home', sub = { know: 'notes' }, ui = { date: today(), q: '', tag: '', note: null };
-$('#tabs').innerHTML = TABS.map(([k, i, n]) => `<button data-k="${k}"><span>${i}</span>${n}</button>`).join('');
+$('#tabs').innerHTML = TABS.map(([k, n]) => `<button data-k="${k}">${ICON[k]}<span>${n}</span></button>`).join('');
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.k === tab));
-  $('#view').innerHTML = VIEWS[tab]();
+  const T = TABS.find(t => t[0] === tab);
+  $('#view').innerHTML = (tab === 'home' ? '' : `<div class="ptitle"><div class="eyebrow">${T[2]}</div><h2>${T[1]}</h2></div>`) + VIEWS[tab]();
 }
 const val = id => $('#' + id)?.value.trim();
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
@@ -156,44 +165,57 @@ function notes() {
   const link = s => esc(s).replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wl" onclick="noteOpen(this.dataset.t)" data-t="${t}">${t}</a>`);
   return `<div class="card"><h2>${ui.note ? '編輯筆記' : '新筆記'}</h2><input id="nt" placeholder="標題" value="${esc(cur.title)}"><textarea id="nb" placeholder="內容，用 [[標題]] 連結其他筆記">${esc(cur.body)}</textarea><input id="ng" placeholder="標籤（逗號分隔）" value="${esc(cur.tags.join(', '))}">
   <div class="row"><button class="b" onclick="noteSave()">儲存</button>${ui.note ? '<button class="b g" onclick="ui.note=null;render()">取消</button>' : ''}</div></div>
-  <input placeholder="🔍 搜尋筆記" value="${esc(ui.q)}" oninput="ui.q=this.value;clearTimeout(window._t);window._t=setTimeout(()=>{render();const i=$('input[placeholder^=🔍]');i.focus();i.setSelectionRange(99,99)},250)">
+  <input placeholder="搜尋筆記" value="${esc(ui.q)}" oninput="ui.q=this.value;clearTimeout(window._t);window._t=setTimeout(()=>{render();const i=$('input[placeholder^=搜尋]');i.focus();i.setSelectionRange(99,99)},250)">
   <div>${tags.map(t => `<span class="tag" style="${ui.tag === t ? 'background:var(--ac);color:var(--btntx)' : ''}" onclick="noteFilter('tag','${ui.tag === t ? '' : esc(t)}')">#${esc(t)}</span>`).join('')}</div>
   ${list.sort((a, b) => b.title.localeCompare(a.title)).map(n => { const back = ns.filter(o => o.id !== n.id && o.body.includes(`[[${n.title}]]`)).length;
     return `<div class="card"><div class="item" style="border:0;padding:0"><b>${esc(n.title)}</b><span><button class="x" onclick="noteEdit('${n.id}')">✎</button><button class="x" onclick="confirm('刪除？')&&del('${n.id}')">✕</button></span></div><pre>${link(n.body)}</pre>${n.tags.map(t => `<span class="tag">#${esc(t)}</span>`).join('')}${back ? `<span class="mut"> ← ${back} 則反向連結</span>` : ''}</div>`; }).join('') || '<p class="mut">沒有符合的筆記</p>'}`;
 }
 function reading() {
-  const bs = all('book'), G = { reading: '📖 閱讀中', want: '📚 想讀', done: '✅ 已讀完' };
+  const bs = all('book'), G = { reading: '閱讀中', want: '想讀', done: '已讀完' };
   return `<div class="card"><h2>加入書單</h2><input id="rt" placeholder="書名"><div class="row"><input id="ra" placeholder="作者"><input id="rp" type="number" placeholder="頁數"></div><button class="b" onclick="readAdd()">加入</button></div>
   ${Object.entries(G).map(([s, label]) => { const l = bs.filter(b => b.status === s); return l.length ? `<div class="card"><h2>${label}（${l.length}）</h2>${l.map(b => `<div class="item" style="display:block"><div class="row" style="align-items:center"><b style="flex:3">${esc(b.title)} <span class="mut">${esc(b.author)}</span></b><button class="x" style="flex:0" onclick="del('${b.id}')">✕</button></div>
     ${b.pages ? `<div class="bar"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><span class="mut">${b.cur}/${b.pages} 頁</span>` : ''}
     <div class="mut"><a class="wl" onclick="readProg('${b.id}')">更新進度</a> · <a class="wl" onclick="readNote('${b.id}')">心得</a>${s !== 'reading' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'reading'})">開始讀</a>` : ''}${s !== 'done' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'done'})">讀完</a>` : ''}
     <span style="float:right">${[1, 2, 3, 4, 5].map(r => `<a onclick="readRate('${b.id}',${r})" style="cursor:pointer">${r <= b.rating ? '★' : '☆'}</a>`).join('')}</span></div>${b.note ? `<pre class="mut">${esc(b.note)}</pre>` : ''}</div>`).join('')}</div>` : ''; }).join('') || ''}`;
 }
-const know = () => `<div class="row"><button class="b ${sub.know === 'notes' ? '' : 'g'}" onclick="knowSub('notes')">🗒 筆記</button><button class="b ${sub.know === 'read' ? '' : 'g'}" onclick="knowSub('read')">📚 閱讀清單</button></div>` + (sub.know === 'notes' ? notes() : reading());
+const know = () => `<div class="row"><button class="b ${sub.know === 'notes' ? '' : 'g'}" onclick="knowSub('notes')">筆記</button><button class="b ${sub.know === 'read' ? '' : 'g'}" onclick="knowSub('read')">閱讀清單</button></div>` + (sub.know === 'notes' ? notes() : reading());
 
 // ---------- 今日總覽（儀表板） ----------
 const DEF_ID = '我是一個有系統、持續精進的人', DEF_QUOTE = '我允許自己既是傑作，也是進行中的作品。';
 window.editSetting = (k, label, d) => { const v = prompt(label, setting(k, d)); if (v !== null && v.trim()) { setSetting(k, v.trim()); render(); } };
 window.go = t => { tab = t; render(); scrollTo(0, 0); };
+// 抽象色塊（非照片）：顏色走 CSS 變數，深色模式自動調整
+const CV = b => `<svg class="cv" viewBox="0 0 160 74" preserveAspectRatio="xMidYMid slice">${b}</svg>`;
+const COVER = {
+  bujo: CV('<rect width="160" height="74" fill="var(--sand)"/><circle cx="40" cy="22" r="4" fill="var(--cocoa)"/><rect x="54" y="19" width="70" height="6" rx="3" fill="var(--clay)"/><circle cx="40" cy="38" r="4" fill="var(--card)"/><rect x="54" y="35" width="50" height="6" rx="3" fill="var(--card)"/><circle cx="40" cy="54" r="4" fill="var(--clay)"/><rect x="54" y="51" width="62" height="6" rx="3" fill="var(--clay)"/>'),
+  fit: CV('<rect width="160" height="74" fill="var(--sage)"/><circle cx="116" cy="26" r="13" fill="var(--sand)"/><path d="M0 74V50Q40 22 82 48T160 40V74Z" fill="var(--cocoa)" opacity=".5"/><path d="M0 74V62Q50 42 100 60T160 54V74Z" fill="var(--card)" opacity=".7"/>'),
+  fin: CV('<rect width="160" height="74" fill="var(--clay)"/><rect x="42" y="46" width="15" height="28" rx="3" fill="var(--card)" opacity=".75"/><rect x="63" y="36" width="15" height="38" rx="3" fill="var(--card)" opacity=".75"/><rect x="84" y="26" width="15" height="48" rx="3" fill="var(--card)" opacity=".75"/><rect x="105" y="14" width="15" height="60" rx="3" fill="var(--cocoa)" opacity=".8"/>'),
+  know: CV('<rect width="160" height="74" fill="var(--mist)"/><path d="M58 74V36a22 22 0 0 1 44 0V74Z" fill="var(--card)" opacity=".8"/><circle cx="80" cy="38" r="8" fill="var(--cocoa)" opacity=".75"/><rect x="18" y="40" width="9" height="34" fill="var(--sand)"/><rect x="29" y="30" width="9" height="44" fill="var(--card)" opacity=".7"/><rect x="122" y="34" width="9" height="40" fill="var(--sand)"/><rect x="133" y="44" width="9" height="30" fill="var(--card)" opacity=".7"/>')
+};
+const HERO_ART = '<svg viewBox="0 0 200 150" preserveAspectRatio="xMaxYMid slice"><rect width="200" height="150" fill="var(--sand)"/><circle cx="150" cy="46" r="34" fill="var(--clay)"/><path d="M40 150V92a44 44 0 0 1 88 0V150Z" fill="var(--sage)"/><path d="M104 150a48 48 0 0 1 96 0Z" fill="var(--cocoa)" opacity=".7"/><circle cx="84" cy="92" r="9" fill="var(--card)"/><path d="M0 118h40" stroke="var(--cocoa)" stroke-width="1.2"/></svg>';
+function weekStrip(days) {
+  const d0 = new Date(weekStart() + 'T00:00:00'), names = ['一', '二', '三', '四', '五', '六', '日'];
+  return `<div class="card week">${names.map((n, i) => { const d = new Date(d0); d.setDate(d0.getDate() + i); const iso = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); return `<div class="${iso === today() ? 'today' : ''}"><small>${n}</small><b>${d.getDate()}</b><i class="${days.has(iso) ? 'on' : ''}"></i></div>`; }).join('')}</div>`;
+}
 function home() {
   const f = fitStats(), m = month(today()), t = all('txn').filter(x => month(x.date) === m);
   const out = t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), inc = t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0);
   const todo = all('bullet').filter(b => b.kind === 'task' && b.state === 'open' && b.date <= today());
-  const rd = all('book').filter(b => b.status === 'reading'), goal = setting('goal', 150), budget = setting('budget', 20000);
-  const h = new Date().getHours(), greet = h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
-  const date = new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' });
-  const sync = cfg().token ? '' : '<p class="bad">尚未設定同步金鑰，點右上角 ● 輸入（目前僅存在本機）</p>';
-  const recent = f.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
-  return `<div class="dash"><div class="dc">
-    <div class="card hello"><div class="eyebrow">${date}</div><h2>${greet}，今天也慢慢前進</h2>
-      <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>${sync}</div>
-    <div class="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, i, n]) => `<div class="tile" onclick="go('${k}')"><span>${i}</span>${n}</div>`).join('')}</div>
-    <div class="card"><h2>今日待辦（${todo.length}）</h2>${todo.slice(0, 8).map(b => `<div class="item"><span><a class="wl" onclick="bujoCycle('${b.id}')" style="text-decoration:none;font-size:20px;margin-right:8px">•</a>${esc(b.text)}</span></div>`).join('') || '<p class="mut">全部完成</p>'}</div>
-    <div class="card"><h2>最近運動</h2>${recent.map(x => `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min}分${x.km ? ' · ' + x.km + 'km' : ''}</span></div>`).join('') || '<p class="mut">尚無記錄</p>'}</div>
+  const books = all('book'), rd = books.filter(b => b.status === 'reading'), goal = setting('goal', 150), budget = setting('budget', 20000);
+  const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
+  const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  const stat = { bujo: `${todo.length} 項待辦`, fit: `${f.min} / ${goal} 分`, fin: `${money(out)} 支出`, know: `${all('note').length} 筆記 · ${rd.length} 在讀` };
+  return `<div class="card hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}</h2>
+      <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
+      ${cfg().token ? '' : `<br><span class="chip" onclick="$('#sync').click()">尚未同步 · 點此設定</span>`}</div><div class="hero-art">${HERO_ART}</div></div>
+  ${weekStrip(new Set(f.w.map(x => x.date)))}
+  <div class="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, n]) => `<div class="tile" onclick="go('${k}')">${COVER[k]}<div class="tl"><div class="tn">${ICON[k]}${n}</div><div class="mut">${stat[k]}</div></div></div>`).join('')}</div>
+  <div class="dash"><div class="dc">
+    <div class="card"><h2>今日待辦</h2>${todo.slice(0, 8).map(b => `<div class="item"><span><i class="dot" onclick="bujoCycle('${b.id}')"></i>${esc(b.text)}</span><span class="mut">${b.date === today() ? '' : b.date.slice(5)}</span></div>`).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}</div>
+    <div class="card"><h2>目前閱讀</h2>${rd.slice(0, 2).map(b => `<div class="book" style="margin:4px 0 10px"><div class="cover">${esc(b.title.slice(0, 10))}</div><div style="flex:1;min-width:0"><b>${esc(b.title)}</b><div class="mut">${esc(b.author)}</div>${b.pages ? `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><div class="mut">${Math.round(b.cur / b.pages * 100)}%</div>` : ''}</div></div>`).join('') || `<p class="empty">還沒有在讀的書 · <a class="wl" onclick="sub.know='read';go('know')">加入書單</a></p>`}</div>
   </div><aside class="dr">
-    <div class="card"><h2>目前閱讀</h2>${rd.slice(0, 2).map(b => `<div class="book" style="margin-bottom:10px"><div class="cover">${esc(b.title.slice(0, 12))}</div><div style="flex:1"><b>${esc(b.title)}</b><div class="mut">${esc(b.author)}</div>${b.pages ? `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><div class="mut">${Math.round(b.cur / b.pages * 100)}%</div>` : ''}</div></div>`).join('') || '<p class="mut">尚無</p>'}</div>
-    <div class="card" onclick="go('fit')" style="cursor:pointer"><h2>本週運動</h2><div class="big">${f.min}<small class="mut"> / ${goal} 分</small></div><div class="bar" style="margin-top:8px"><i style="width:${Math.min(100, f.min / goal * 100)}%"></i></div><div class="mut" style="margin-top:6px">連續 ${f.streak} 天</div></div>
-    <div class="card" onclick="go('fin')" style="cursor:pointer"><h2>本月財務</h2><div class="mut">支出</div><div class="big">${money(out)}</div><div class="bar" style="margin:6px 0"><i style="width:${Math.min(100, out / budget * 100)}%"></i></div><div class="mut">結餘 ${money(inc - out)}</div></div>
+    <div class="grid" style="margin-bottom:12px"><div class="card" onclick="go('fit')" style="cursor:pointer"><div class="eyebrow">本週運動</div><div class="big">${f.min}<small class="mut"> / ${goal}</small></div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, f.min / goal * 100)}%"></i></div><div class="mut">連續 ${f.streak} 天</div></div>
+    <div class="card" onclick="go('fin')" style="cursor:pointer"><div class="eyebrow">本月支出</div><div class="big">${money(out)}</div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, out / budget * 100)}%"></i></div><div class="mut">結餘 ${money(inc - out)}</div></div></div>
     <div class="card quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>
   </aside></div>`;
 }
