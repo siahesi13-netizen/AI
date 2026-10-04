@@ -52,6 +52,21 @@ pre{white-space:pre-wrap;font:inherit;margin:0}
 .dash{display:grid;grid-template-columns:1fr;gap:0}.dc,.dr{min-width:0}
 .book{display:flex;gap:12px;align-items:center}.cover{width:44px;height:62px;border-radius:2px 6px 6px 2px;background:var(--cocoa);color:var(--card);font:700 10.5px/1.25 "Noto Serif TC",serif;padding:6px;display:flex;align-items:flex-end;box-shadow:inset 3px 0 0 rgba(0,0,0,.12)}
 .quote{text-align:center;font:500 14px/1.9 "Noto Serif TC",serif;color:var(--link);cursor:pointer;background:var(--soft);box-shadow:none}
+/* 分段切換、摘錄、曼陀羅 */
+.seg{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;scrollbar-width:none}.seg::-webkit-scrollbar{display:none}
+.seg button{flex:none;padding:6px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font:inherit;font-size:13px;cursor:pointer}.seg button.on{background:var(--ac);color:var(--btntx);border-color:var(--ac)}
+details.card summary{list-style:none}details.card summary::-webkit-details-marker{display:none}details.card summary::after{content:"＋";float:right;color:var(--mut)}details.card[open] summary::after{content:"－"}
+.qt{margin:0 0 8px;padding-left:12px;border-left:3px solid var(--clay);font:500 15.5px/1.8 "Noto Serif TC",serif}
+.mand{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mc{aspect-ratio:1;border:1px solid var(--line);border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;font-size:13px;line-height:1.35;cursor:pointer;overflow:hidden;word-break:break-word}
+.mc.sub{background:var(--sand)}.mc.ctr{background:var(--clay);font-weight:700}.mc.core{background:var(--cocoa);color:var(--card);font:700 14px/1.35 "Noto Serif TC",serif}
+.mand9{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mand.mini{gap:2px}.mand.mini .mc{font-size:8px;border-radius:4px;padding:1px;line-height:1.15}
+.m9{display:none}@media(min-width:700px){.m9{display:block}.mand{max-width:520px;margin:auto}.mand9 .mand{max-width:none}}
+/* 知識小卡（索引卡樣式） */
+.kgrid{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:760px){.kgrid{grid-template-columns:1fr 1fr}}
+.kcard{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px 10px;box-shadow:var(--shadow);background-image:repeating-linear-gradient(transparent,transparent 25px,var(--soft) 25px,var(--soft) 26px);background-position:0 40px}
+.kh{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;border-bottom:1.5px solid var(--clay);padding-bottom:6px;margin-bottom:8px}.kh b{font:700 15.5px/1.4 "Noto Serif TC",serif}.kh span{flex:none;white-space:nowrap}
+.kcard pre{line-height:26px;font-size:14px}.kf{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:11.5px;color:var(--mut)}
 /* 習慣／喝水的圓形打勾格 */
 .hw{display:flex;gap:6px;flex-wrap:wrap}
 .hc{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--bg);color:var(--mut);padding:0;cursor:pointer;font:inherit;display:flex;align-items:center;justify-content:center}

@@ -1,4 +1,4 @@
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,7 +84,7 @@ const ICON = {
 // [key, 側邊欄名稱, 英文副標, 手機底部短名]
 const TABS = [['home', '今日', 'Today', '今日'], ['bujo', '待辦事項', 'To-do', '待辦'], ['habit', '每週習慣建立', 'Weekly Habits', '習慣'], ['diet', '飲食管理', 'Nutrition', '飲食'], ['fit', '運動管理', 'Movement', '運動'],
   ['ffin', '家庭財務', 'Family Finance', '家庭'], ['pfin', '個人財務', 'Personal Finance', '個人'], ['know', '閱讀', 'Reading', '閱讀'], ['goal', '未來目標', 'Future Goals', '目標']];
-let tab = 'home', sub = { know: 'read' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0 };
+let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
 $('#tabs').innerHTML = TABS.map(([k, n, , sn]) => `<button data-k="${k}">${ICON[k]}<span class="nl">${n}</span><span class="ns">${sn}</span></button>`).join('');
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
@@ -100,23 +100,50 @@ const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getD
 const weekDates = (off = 0) => { const d0 = new Date(weekStart() + 'T00:00:00'); return [0, 1, 2, 3, 4, 5, 6].map(i => { const d = new Date(d0); d.setDate(d0.getDate() + i + off * 7); return iso(d); }); };
 const WD = ['一', '二', '三', '四', '五', '六', '日'];
 
-// ---------- 待辦事項（子彈筆記） ----------
-const SYM = { task: '•', event: '○', note: '–' }, ST = { open: '', done: '×', moved: '>' };
+// ---------- 共用：分段切換 ----------
+window.setSub = (k, v) => { sub[k] = v; render(); };
+const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${sub[key] === v ? 'on' : ''}" data-v="${esc(v)}" onclick="setSub('${key}',this.dataset.v)">${esc(l)}</button>`).join('')}</div>`;
+window.del = del;
+
+// ---------- 待辦事項（雜事清單：記下來、做了沒） ----------
+const TODO_LISTS = ['雜事', '採買', '家務', '行政'];
+window.todoAdd = () => { const t = val('tt'); if (!t) return; put('todo', { text: t, list: val('tl') || '雜事', due: val('td'), star: false, done: false, created: Date.now() }); render(); setTimeout(() => $('#tt') && $('#tt').focus()); };
+window.todoToggle = id => { const d = DB[id].data; patch(id, { done: !d.done, doneAt: d.done ? null : today() }); render(); };
+window.todoStar = id => { patch(id, { star: !DB[id].data.star }); render(); };
+const todoSort = (a, b) => (b.star - a.star) || (a.due || '9999').localeCompare(b.due || '9999') || (a.created - b.created);
+const todosOpen = () => all('todo').filter(t => !t.done).sort(todoSort);
+const todoRow = t => `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${t.done ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="todoToggle('${t.id}')"></i><span style="${t.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(t.text)}${t.due ? ` <span class="mut ${t.due < today() && !t.done ? 'bad' : ''}">${t.due === today() ? '今天' : t.due.slice(5)}</span>` : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" style="${t.star ? 'color:var(--bar)' : ''}" onclick="todoStar('${t.id}')" aria-label="重要">${t.star ? '★' : '☆'}</button><button class="x" onclick="del('${t.id}')" aria-label="刪除">✕</button></span></div>`;
+function bujo() {
+  const ts = all('todo'), open = todosOpen(), f = sub.todo, lists = [...new Set([...TODO_LISTS, ...ts.map(t => t.list)])];
+  const shown = open.filter(t => f === 'all' ? true : f === 'today' ? (t.due && t.due <= today()) : f === 'star' ? t.star : t.list === f);
+  const done = ts.filter(t => t.done).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || '')).slice(0, 30);
+  const groups = f === 'all' ? lists.filter(l => shown.some(t => t.list === l)) : [null];
+  return `<div class="card"><input id="tt" placeholder="記下一件雜事，按 Enter 新增" onkeydown="event.key==='Enter'&&todoAdd()">
+    <div class="row"><input id="tl" list="tls" placeholder="清單（預設：雜事）"><datalist id="tls">${lists.map(l => `<option value="${esc(l)}">`).join('')}</datalist><input id="td" type="date" aria-label="期限"></div><button class="b" onclick="todoAdd()">新增</button></div>
+  ${seg('todo', [['all', `全部 ${open.length}`], ['today', '今天／逾期'], ['star', '重要'], ...lists.filter(l => open.some(t => t.list === l)).map(l => [l, l])])}
+  ${groups.map(g => { const l = g === null ? shown : shown.filter(t => t.list === g); return l.length ? `<div class="card">${g ? `<div class="eyebrow">${esc(g)}</div>` : ''}${l.map(todoRow).join('')}</div>` : ''; }).join('') || '<div class="card"><p class="empty">這裡沒有待辦，很好。</p></div>'}
+  ${done.length ? `<details class="card"><summary class="mut" style="cursor:pointer">已完成（最近 ${done.length} 筆）</summary>${done.map(todoRow).join('')}</details>` : ''}`;
+}
+
+// ---------- 每週記錄（子彈筆記：• 任務 ○ 事件 – 筆記），顯示在「每週習慣建立」頁 ----------
+const SYM = { task: '•', event: '○', note: '–' };
 const bSym = b => b.kind === 'task' ? (b.state === 'done' ? '×' : b.state === 'moved' ? '>' : '•') : SYM[b.kind];
-window.bujoAdd = () => { const t = val('bt'); if (!t) return; put('bullet', { text: t, kind: val('bk'), state: 'open', date: ui.date }); render(); };
+window.bujoAdd = () => { const t = val('bt'); if (!t) return; put('bullet', { text: t, kind: val('bk'), state: 'open', date: val('bd') || today() }); render(); };
 window.bujoCycle = id => { const b = DB[id].data; if (b.kind !== 'task') return; patch(id, { state: { open: 'done', done: 'moved', moved: 'open' }[b.state] }); render(); };
 window.bujoMigrate = id => { patch(id, { state: 'moved' }); put('bullet', { ...DB[id].data, state: 'open', date: today() }); render(); };
-window.bujoDate = d => { ui.date = d; render(); };
-const bujoItem = b => `<div class="item"><span><a class="wl" onclick="bujoCycle('${b.id}')" style="text-decoration:none;font-size:20px;margin-right:8px">${bSym(b)}</a><span style="${b.state === 'done' ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(b.text)}</span></span><button class="x" onclick="del('${b.id}')">✕</button></div>`;
-window.del = del;
-function bujo() {
-  const all_ = all('bullet'), day = all_.filter(b => b.date === ui.date);
-  const stale = all_.filter(b => b.kind === 'task' && b.state === 'open' && b.date < today());
-  return `<div class="card"><div class="row"><input type="date" value="${ui.date}" onchange="bujoDate(this.value)"><button class="b g" onclick="bujoDate('${today()}')">今天</button></div>
-  <div class="row"><select id="bk" style="flex:0 0 90px"><option value="task">• 任務</option><option value="event">○ 事件</option><option value="note">– 筆記</option></select><input id="bt" placeholder="快速記錄…" onkeydown="event.key==='Enter'&&bujoAdd()"></div>
-  <button class="b" onclick="bujoAdd()">新增</button><p class="mut">點符號切換：• 待辦 → × 完成 → &gt; 已移轉</p></div>
-  <div class="card"><h2>${ui.date === today() ? '今日' : ui.date} 日誌</h2>${day.map(bujoItem).join('') || '<p class="mut">尚無記錄</p>'}</div>
-  ${stale.length ? `<div class="card"><h2>未完成（可移轉到今天）</h2>${stale.map(b => `<div class="item"><span>• ${esc(b.text)} <span class="mut">${b.date}</span></span><button class="x" onclick="bujoMigrate('${b.id}')">&gt;</button></div>`).join('')}</div>` : ''}`;
+const bujoItem = b => `<div class="item"><span><a class="wl" onclick="bujoCycle('${b.id}')" style="text-decoration:none;font-size:19px;margin-right:8px;display:inline-block;width:14px;text-align:center">${bSym(b)}</a><span style="${b.state === 'done' ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(b.text)}</span></span><button class="x" onclick="del('${b.id}')">✕</button></div>`;
+const wrId = d0 => 'wr_' + d0, wr = d0 => DB[wrId(d0)] && !DB[wrId(d0)].deleted ? DB[wrId(d0)].data : {};
+window.wrSave = (d0, k, v) => { put('weekreview', { ...wr(d0), week: d0, [k]: v }, wrId(d0)); };
+function weekLog(dates) {
+  const bs = all('bullet'), inWk = bs.filter(b => b.date >= dates[0] && b.date <= dates[6]), stale = bs.filter(b => b.kind === 'task' && b.state === 'open' && b.date < weekStart());
+  const defDay = dates.includes(today()) ? today() : dates[0], R = wr(dates[0]);
+  return `<div class="ptitle" style="margin-top:20px"><div class="eyebrow">Weekly Log</div><h2 style="font-size:19px">本週記錄</h2></div>
+  <div class="card"><div class="row"><select id="bd" style="flex:0 0 92px">${dates.map((d, i) => `<option value="${d}" ${d === defDay ? 'selected' : ''}>週${WD[i]} ${+d.slice(8)}</option>`).join('')}</select><select id="bk" style="flex:0 0 92px"><option value="task">• 任務</option><option value="event">○ 事件</option><option value="note">– 筆記</option></select></div>
+    <input id="bt" placeholder="快速記錄…" onkeydown="event.key==='Enter'&&bujoAdd()"><button class="b" onclick="bujoAdd()">記下</button><p class="mut" style="margin:8px 0 0">點符號切換：• 待辦 → × 完成 → &gt; 已移轉</p></div>
+  ${dates.map((d, i) => { const l = inWk.filter(b => b.date === d); return l.length ? `<div class="card"><div class="eyebrow">週${WD[i]} · ${d.slice(5).replace('-', '/')}</div>${l.map(bujoItem).join('')}</div>` : ''; }).join('') || '<div class="card"><p class="empty">這週還沒有記錄</p></div>'}
+  ${stale.length && ui.wk === 0 ? `<div class="card"><div class="eyebrow">之前未完成 · 可移轉到今天</div>${stale.map(b => `<div class="item"><span>• ${esc(b.text)} <span class="mut">${b.date.slice(5)}</span></span><button class="x" onclick="bujoMigrate('${b.id}')" aria-label="移轉">&gt;</button></div>`).join('')}</div>` : ''}
+  <div class="ptitle" style="margin-top:20px"><div class="eyebrow">Weekly Review</div><h2 style="font-size:19px">每週回顧</h2></div>
+  <div class="card">${[['good', '這週做得好的'], ['adjust', '可以調整的'], ['next', '下週一個小改變']].map(([k, l]) => `<div class="eyebrow" style="margin-top:6px">${l}</div><textarea style="min-height:64px" onchange="wrSave('${dates[0]}','${k}',this.value)">${esc(R[k] || '')}</textarea>`).join('')}<p class="mut" style="margin:6px 0 0">離開輸入框時自動儲存</p></div>`;
 }
 
 // ---------- 運動 ----------
@@ -131,7 +158,7 @@ function fitStats() {
 }
 function fit() {
   const s = fitStats(), goal = setting('goal', 150), pct = Math.min(100, s.min / goal * 100);
-  return `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${pct}%"></i></div>
+  return LATER('之後會串接手機 App（Apple 健康等）自動帶入，這裡先保留手動記錄。') + `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${pct}%"></i></div>
   <div class="grid" style="margin-top:12px"><div><div class="big">${s.min}</div><div class="mut">分鐘</div></div><div><div class="big">${s.n}</div><div class="mut">次</div></div><div><div class="big">${s.km.toFixed(1)}</div><div class="mut">公里</div></div><div><div class="big">${s.streak}</div><div class="mut">連續天數</div></div></div></div>
   <div class="card"><h2>新增運動</h2><div class="row"><input type="date" id="fd" value="${today()}"><select id="fk">${['跑步', '重訓', '游泳', '單車', '瑜珈', '走路', '球類', '其他'].map(k => `<option>${k}</option>`).join('')}</select></div>
   <div class="row"><input id="fm" type="number" inputmode="numeric" placeholder="分鐘"><input id="fkm" type="number" inputmode="decimal" placeholder="公里（選填）"></div><input id="fn" placeholder="備註（選填）"><button class="b" onclick="fitAdd()">記錄</button></div>
@@ -154,7 +181,7 @@ function fin() {
   const L = curLedger(), C = LEDGER[L], m = ui.m || month(today()), t = txns(L, m), { inc, out, budget } = finSum(L, m), by = {};
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
   const cats = Object.entries(by).sort((a, b) => b[1] - a[1]);
-  return `<div class="card"><input type="month" value="${m}" onchange="finMonth(this.value)">
+  return (L === 'family' ? LATER('家庭開支彙整的表格確定後，這頁會改成對應的欄位與彙總。') : '') + `<div class="card"><input type="month" value="${m}" onchange="finMonth(this.value)">
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
   <div class="mut"><a class="wl" onclick="finBudget()">預算 ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
@@ -181,8 +208,9 @@ function habit() {
   ${hs.map(h => { const n = dates.filter(d => hDone(h.id, d)).length; return `<div class="card"><div class="item" style="border:0;padding:0 0 6px"><span><b>${esc(h.name)}</b>${h.identity ? ` <span class="tag">${esc(h.identity)}</span>` : ''}</span><button class="x" onclick="confirm('刪除這個習慣？紀錄會保留在雲端備份')&&del('${h.id}')">✕</button></div>
     ${h.cue || h.tiny ? `<div class="mut" style="margin-bottom:8px">${esc(h.cue)}${h.cue && h.tiny ? ' → ' : ''}${esc(h.tiny)}</div>` : ''}${hChecks(h, dates)}
     <div class="mut" style="margin-top:8px">本週 ${n}/7 · 連續 ${habitStreak(h.id)} 天 · 累計 ${habitVotes(h.id)} 票</div></div>`; }).join('') || '<div class="card"><p class="empty">還沒有習慣。從一個兩分鐘就能做完的小動作開始。</p></div>'}
-  <div class="card"><h2>新增習慣</h2><input id="hn" placeholder="習慣名稱（例：晨間伸展）"><input id="hi" placeholder="身分：我是一個…的人（例：重視身體的人）"><input id="hc" placeholder="提示：在什麼之後做（例：起床喝完水之後）"><input id="ht" placeholder="兩分鐘版本（例：鋪開瑜珈墊伸展 2 分鐘）"><button class="b" onclick="habitAdd()">建立</button>
-    <p class="mut" style="margin:8px 0 0">每打一個勾，就是為那個身分投一票。漏掉一天沒關係，不要連續漏兩天。</p></div>`;
+  <details class="card"${hs.length ? '' : ' open'}><summary style="cursor:pointer"><b class="serif">新增習慣</b></summary><input id="hn" style="margin-top:10px" placeholder="習慣名稱（例：晨間伸展）"><input id="hi" placeholder="身分：我是一個…的人（例：重視身體的人）"><input id="hc" placeholder="提示：在什麼之後做（例：起床喝完水之後）"><input id="ht" placeholder="兩分鐘版本（例：鋪開瑜珈墊伸展 2 分鐘）"><button class="b" onclick="habitAdd()">建立</button>
+    <p class="mut" style="margin:8px 0 0">每打一個勾，就是為那個身分投一票。漏掉一天沒關係，不要連續漏兩天。</p></details>
+  ${weekLog(dates)}`;
 }
 
 // ---------- 飲食管理 ----------
@@ -191,9 +219,10 @@ window.dietDate = d => { ui.dd = d; render(); };
 window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, waterId(ui.dd)); render(); };
 window.waterGoal = () => { const g = prompt('每日喝水目標（杯）', setting('water_goal', 8)); if (g) { setSetting('water_goal', +g); render(); } };
 window.mealAdd = () => { const t = val('mt'); if (!t) return; put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn') }); render(); };
+const LATER = t => `<p class="mut" style="margin:0 2px 12px">${t}</p>`;
 function diet() {
   const ms = all('meal').filter(m => m.date === ui.dd), wg = setting('water_goal', 8), c = cups(ui.dd), dates = weekDates(), logged = new Set(all('meal').map(m => m.date));
-  return `<div class="card"><div class="row"><input type="date" value="${ui.dd}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div>
+  return LATER('之後會串接手機 App 自動帶入，這裡先保留手動記錄。') + `<div class="card"><div class="row"><input type="date" value="${ui.dd}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div>
     <div class="eyebrow" style="margin-top:10px">喝水 <a class="wl" style="letter-spacing:0" onclick="waterGoal()">目標 ${wg} 杯</a></div>
     <div class="hw" style="margin-top:6px">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>
   <div class="card"><h2>記錄一餐</h2><div class="row"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div><input id="mn" placeholder="備註：份量、飽足感、心情（選填）"><button class="b" onclick="mealAdd()">記錄</button></div>
@@ -201,46 +230,72 @@ function diet() {
   <div class="card week">${dates.map((d, i) => `<div class="${d === today() ? 'today' : ''}" onclick="dietDate('${d}')" style="cursor:pointer"><small>${WD[i]}</small><b>${+d.slice(8)}</b><i class="${logged.has(d) ? 'on' : ''}"></i></div>`).join('')}</div>`;
 }
 
-// ---------- 未來目標 ----------
+// ---------- 未來目標（人生／5・3・1 年／今年 ＋ 曼陀羅九宮格） ----------
 const AREAS = ['職涯', '健康', '財務', '學習', '關係', '創作', '生活'];
-window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { title: t, area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
+const HZ = [['life', '人生目標', 'Life'], ['y5', '5 年目標', 'Five years'], ['y3', '3 年目標', 'Three years'], ['y1', '1 年目標', 'One year'], ['year', '今年目標', 'This year']];
+window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { title: t, hz: val('gh'), area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
 window.goalEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: k === 'progress' ? Math.max(0, Math.min(100, +v || 0)) : v.trim() }); render(); };
 window.goalDone = id => { const g = DB[id].data; patch(id, { done: !g.done, progress: g.done ? g.progress : 100 }); render(); };
 const dLeft = due => { if (!due) return ''; const n = Math.round((new Date(due + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); return n >= 0 ? `還有 ${n} 天` : `已過 ${-n} 天`; };
-function goal() {
-  const gs = all('goal').sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')), act = gs.filter(g => !g.done), dn = gs.filter(g => g.done);
-  const card = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(g.title)}</b></span><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></div>
+const goalCard = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(g.title)}</b></span><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></div>
     <div><span class="tag">${esc(g.area)}</span>${g.due ? `<span class="mut">${g.due} · ${dLeft(g.due)}</span>` : ''}</div>
     ${g.why ? `<p style="margin:8px 0 4px"><span class="eyebrow">為什麼</span><br>${esc(g.why)}</p>` : ''}
     <p style="margin:8px 0 6px"><span class="eyebrow">下一步</span><br><a class="wl" onclick="goalEdit('${g.id}','next','下一步行動')">${esc(g.next) || '設定下一步'}</a></p>
     <div class="bar"><i style="width:${g.progress || 0}%"></i></div><div class="mut" style="margin-top:4px"><a class="wl" onclick="goalEdit('${g.id}','progress','進度（0–100）')">進度 ${g.progress || 0}%</a></div></div>`;
-  return `${act.map(card).join('') || '<div class="card"><p class="empty">還沒有目標。寫下一個一年內想完成的事。</p></div>'}
-  <div class="card"><h2>新增目標</h2><input id="gt" placeholder="目標（例：完成攝影作品集）"><div class="row"><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select><input type="date" id="gd"></div><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>
-  ${dn.length ? `<div class="ptitle" style="margin-top:18px"><div class="eyebrow">Achieved</div></div>` + dn.map(card).join('') : ''}`;
+function goalList() {
+  const gs = all('goal').map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
+  return HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k); return `<div class="ptitle" style="margin-top:16px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${n}</h2></div>${l.map(goalCard).join('') || '<div class="card"><p class="empty">尚未設定</p></div>'}`; }).join('') +
+  `<div class="card" style="margin-top:16px"><h2>新增目標</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
 }
+// 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
+const MID = () => 'mandala_' + new Date().getFullYear();
+const mcells = () => DB[MID()] && !DB[MID()].deleted ? DB[MID()].data.cells || {} : {};
+const mkey = (b, i) => b === 4 ? `4_${i}` : i === 4 ? `4_${b}` : `${b}_${i}`;
+window.mSet = (k, label) => { const v = prompt(label, mcells()[k] || ''); if (v === null) return; put('mandala', { year: new Date().getFullYear(), cells: { ...mcells(), [k]: v.trim() } }, MID()); render(); };
+window.mOpen = b => { ui.mb = b; render(); };
+window.mTap = (b, i) => { const c = mcells(); if (b === 4) { if (i === 4) return mSet('4_4', '今年的核心目標'); return c[`4_${i}`] ? mOpen(i) : mSet(`4_${i}`, '面向（例：健康、財務、創作）'); } if (i === 4) return mSet(`4_${b}`, '面向名稱'); mSet(`${b}_${i}`, '具體行動'); };
+const mBlock = (b, mini) => `<div class="mand ${mini ? 'mini' : ''}">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => { const t = mcells()[mkey(b, i)] || ''; return `<div class="mc ${i === 4 ? (b === 4 ? 'core' : 'ctr') : ''} ${b === 4 && i !== 4 ? 'sub' : ''}" onclick="${mini ? `mOpen(${b})` : `mTap(${b},${i})`}">${esc(t) || (mini ? '' : '<span class="mut">＋</span>')}</div>`; }).join('')}</div>`;
+function mandala() {
+  const c = mcells(), b = ui.mb, filled = Object.keys(c).filter(k => !k.startsWith('4_') && c[k]).length;
+  return `<div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${new Date().getFullYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
+    ${mBlock(b, false)}<div class="mut" style="margin-top:10px">已填行動 ${filled} / 64</div><div class="bar" style="margin-top:6px"><i style="width:${filled / 64 * 100}%"></i></div></div>
+  <div class="card m9"><h2>全貌</h2><div class="mand9">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(x => mBlock(x, true)).join('')}</div></div>`;
+}
+const goal = () => seg('goal', [['list', '人生・5／3／1 年・今年'], ['mandala', '曼陀羅九宮格']]) + (sub.goal === 'mandala' ? mandala() : goalList());
 
 // ---------- 閱讀：書單 + 筆記 ----------
 window.knowSub = s => { sub.know = s; render(); };
-window.noteSave = () => { const title = val('nt'); if (!title) return; const d = { title, body: $('#nb').value, tags: val('ng').split(/[,，\s]+/).filter(Boolean) }; ui.note ? patch(ui.note, d) : put('note', d); ui.note = null; render(); };
 window.noteEdit = id => { ui.note = id; render(); scrollTo(0, 0); };
-window.noteOpen = t => { const n = all('note').find(x => x.title === t); if (n) noteEdit(n.id); else if (confirm(`建立筆記「${t}」？`)) { ui.note = put('note', { title: t, body: '', tags: [] }); render(); } };
+window.noteOpen = t => { const n = all('note').find(x => x.title === t); if (n) noteEdit(n.id); else if (confirm(`建立小卡「${t}」？`)) { ui.note = put('note', { title: t, body: '', tags: [] }); render(); } };
 window.noteFilter = (k, v) => { ui[k] = v; render(); };
 window.readAdd = () => { const t = val('rt'); if (!t) return; put('book', { title: t, author: val('ra'), status: 'want', pages: +val('rp') || 0, cur: 0, rating: 0, note: '' }); render(); };
 window.readSet = (id, p) => { patch(id, p); render(); };
 window.readProg = id => { const b = DB[id].data, c = prompt('目前讀到第幾頁？' + (b.pages ? `（共 ${b.pages} 頁）` : ''), b.cur); if (c === null) return; const cur = +c; patch(id, { cur, status: b.pages && cur >= b.pages ? 'done' : 'reading' }); render(); };
 window.readNote = id => { const n = prompt('心得 / 摘要', DB[id].data.note); if (n !== null) { patch(id, { note: n }); render(); } };
 window.readRate = (id, r) => readSet(id, { rating: r });
+// 知識小卡：依梅棹忠夫《知的生產技術》的卡片法——一卡一事、標題＋完整句子＋日期、不急著分類、常翻閱並重新排列組合
+window.noteSave = () => { const title = val('nt'); if (!title) return; const d = { title, body: $('#nb').value, src: val('ns'), tags: val('ng').split(/[,，\s]+/).filter(Boolean) }; ui.note ? patch(ui.note, d) : put('note', { ...d, date: today(), created: Date.now() }); ui.note = null; ui.draft = null; ui.draftSrc = null; render(); };
+window.deskToggle = id => { ui.desk = ui.desk || []; ui.desk = ui.desk.includes(id) ? ui.desk.filter(x => x !== id) : [...ui.desk, id]; render(); };
+window.cardShuffle = () => { const ids = all('note').map(n => n.id).sort(() => Math.random() - .5).slice(0, 3); ui.flip = ids; render(); };
+window.deskCombine = () => { ui.note = null; ui.draft = (ui.desk || []).map(id => `[[${DB[id].data.title}]]`).join('\n') + '\n\n把這幾張放在一起，我發現：'; render(); scrollTo(0, 0); };
 function notes() {
-  const ns = all('note'), q = ui.q.toLowerCase(), tags = [...new Set(ns.flatMap(n => n.tags))];
-  const cur = ui.note ? DB[ui.note].data : { title: '', body: '', tags: [] };
-  const list = ns.filter(n => (!ui.tag || n.tags.includes(ui.tag)) && (!q || (n.title + n.body).toLowerCase().includes(q)));
-  const link = s => esc(s).replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wl" onclick="noteOpen(this.dataset.t)" data-t="${t}">${t}</a>`);
-  return `<div class="card"><h2>${ui.note ? '編輯筆記' : '新筆記'}</h2><input id="nt" placeholder="標題" value="${esc(cur.title)}"><textarea id="nb" placeholder="內容，用 [[標題]] 連結其他筆記">${esc(cur.body)}</textarea><input id="ng" placeholder="標籤（逗號分隔）" value="${esc(cur.tags.join(', '))}">
-  <div class="row"><button class="b" onclick="noteSave()">儲存</button>${ui.note ? '<button class="b g" onclick="ui.note=null;render()">取消</button>' : ''}</div></div>
-  <input placeholder="搜尋筆記" value="${esc(ui.q)}" oninput="ui.q=this.value;clearTimeout(window._t);window._t=setTimeout(()=>{render();const i=$('input[placeholder^=搜尋]');i.focus();i.setSelectionRange(99,99)},250)">
-  <div>${tags.map(t => `<span class="tag" style="${ui.tag === t ? 'background:var(--ac);color:var(--btntx)' : ''}" onclick="noteFilter('tag','${ui.tag === t ? '' : esc(t)}')">#${esc(t)}</span>`).join('')}</div>
-  ${list.sort((a, b) => b.title.localeCompare(a.title)).map(n => { const back = ns.filter(o => o.id !== n.id && o.body.includes(`[[${n.title}]]`)).length;
-    return `<div class="card"><div class="item" style="border:0;padding:0"><b>${esc(n.title)}</b><span><button class="x" onclick="noteEdit('${n.id}')">✎</button><button class="x" onclick="confirm('刪除？')&&del('${n.id}')">✕</button></span></div><pre>${link(n.body)}</pre>${n.tags.map(t => `<span class="tag">#${esc(t)}</span>`).join('')}${back ? `<span class="mut"> ← ${back} 則反向連結</span>` : ''}</div>`; }).join('') || '<p class="mut">沒有符合的筆記</p>'}`;
+  const ns = all('note').sort((a, b) => (b.created || 0) - (a.created || 0)), q = ui.q.toLowerCase(), tags = [...new Set(ns.flatMap(n => n.tags || []))], desk = (ui.desk || []).filter(id => DB[id] && !DB[id].deleted);
+  const cur = ui.note ? DB[ui.note].data : { title: '', body: ui.draft || '', src: ui.draftSrc || '', tags: [] };
+  const list = ns.filter(n => (!ui.tag || (n.tags || []).includes(ui.tag)) && (!q || (n.title + n.body).toLowerCase().includes(q)));
+  const link = t => esc(t).replace(/\[\[(.+?)\]\]/g, (_, x) => `<a class="wl" onclick="noteOpen(this.dataset.t)" data-t="${x}">${x}</a>`);
+  const card = n => { const back = ns.filter(o => o.id !== n.id && o.body.includes(`[[${n.title}]]`)).length, on = desk.includes(n.id);
+    return `<div class="kcard"><div class="kh"><b>${esc(n.title)}</b><span><button class="x" style="${on ? 'color:var(--bar)' : ''}" onclick="deskToggle('${n.id}')" aria-label="放上桌面" title="放上桌面並排">${on ? '◆' : '◇'}</button><button class="x" onclick="noteEdit('${n.id}')" aria-label="編輯">✎</button><button class="x" onclick="confirm('刪除這張小卡？')&&del('${n.id}')" aria-label="刪除">✕</button></span></div>
+      <pre>${link(n.body)}</pre><div class="kf"><span>${n.date || ''}${n.src ? ' · ' + esc(n.src) : ''}${back ? ` · ← ${back}` : ''}</span><span>${(n.tags || []).map(t => `#${esc(t)}`).join(' ')}</span></div></div>`; };
+  const flip = (ui.flip || []).map(id => ns.find(n => n.id === id)).filter(Boolean);
+  return `<div class="card"><h2>${ui.note ? '編輯小卡' : '寫一張小卡'}</h2><input id="nt" placeholder="標題：一張卡只寫一件事" value="${esc(cur.title)}"><textarea id="nb" placeholder="用完整的句子寫，寫給未來已經忘記的自己。可用 [[標題]] 連到其他小卡">${esc(cur.body)}</textarea>
+    <div class="row"><input id="ns" list="bks2" placeholder="出處（選填）" value="${esc(cur.src || '')}"><datalist id="bks2">${all('book').map(b => `<option value="${esc(b.title)}">`).join('')}</datalist><input id="ng" placeholder="標籤（選填，不急著分類）" value="${esc((cur.tags || []).join(', '))}"></div>
+    <div class="row"><button class="b" onclick="noteSave()">存成小卡</button>${ui.note || ui.draft ? '<button class="b g" onclick="ui.note=null;ui.draft=null;ui.draftSrc=null;render()">取消</button>' : ''}</div></div>
+  ${desk.length ? `<div class="card" style="background:var(--soft)"><div class="item" style="border:0;padding:0 0 8px"><b class="serif">桌面 · 並排 ${desk.length} 張</b><span><button class="b" style="width:auto;padding:6px 12px;margin:0" onclick="deskCombine()">由此寫新卡</button> <button class="x" onclick="ui.desk=[];render()" aria-label="清空桌面">✕</button></span></div><div class="kgrid">${desk.map(id => card({ id, ...DB[id].data })).join('')}</div></div>` : ''}
+  <div class="row" style="align-items:center;margin-bottom:4px"><input placeholder="搜尋小卡" value="${esc(ui.q)}" onchange="ui.q=this.value;render()"><button class="b g" style="flex:0 0 96px" onclick="cardShuffle()">翻一翻</button></div>
+  ${tags.length ? `<div style="margin-bottom:8px">${tags.map(t => `<span class="tag" style="${ui.tag === t ? 'background:var(--ac);color:var(--btntx)' : ''}" data-t="${esc(t)}" onclick="noteFilter('tag',ui.tag===this.dataset.t?'':this.dataset.t)">#${esc(t)}</span>`).join('')}</div>` : ''}
+  ${flip.length ? `<div class="eyebrow" style="margin:6px 2px">隨手翻到</div><div class="kgrid">${flip.map(card).join('')}</div><div class="eyebrow" style="margin:14px 2px 6px">全部小卡 ${ns.length}</div>` : ''}
+  <div class="kgrid">${list.map(card).join('')}</div>${list.length ? '' : '<div class="card"><p class="empty">還沒有小卡。讀到、想到一件事，就寫一張。</p></div>'}
+  <p class="mut" style="margin:12px 2px">卡片法：一卡一事、寫完整句子、標上日期；不急著分類，常常翻、把不相干的卡片並排，新的想法會從組合裡出來。</p>`;
 }
 function reading() {
   const bs = all('book'), G = { reading: '閱讀中', want: '想讀', done: '已讀完' };
@@ -250,7 +305,25 @@ function reading() {
     <div class="mut"><a class="wl" onclick="readProg('${b.id}')">更新進度</a> · <a class="wl" onclick="readNote('${b.id}')">心得</a>${s !== 'reading' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'reading'})">開始讀</a>` : ''}${s !== 'done' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'done'})">讀完</a>` : ''}
     <span style="float:right">${[1, 2, 3, 4, 5].map(r => `<a onclick="readRate('${b.id}',${r})" style="cursor:pointer">${r <= b.rating ? '★' : '☆'}</a>`).join('')}</span></div>${b.note ? `<pre class="mut">${esc(b.note)}</pre>` : ''}</div>`).join('')}</div>` : ''; }).join('') || ''}`;
 }
-const know = () => `<div class="row" style="margin-bottom:8px"><button class="b ${sub.know === 'read' ? '' : 'g'}" onclick="knowSub('read')">書單</button><button class="b ${sub.know === 'notes' ? '' : 'g'}" onclick="knowSub('notes')">讀書筆記</button></div>` + (sub.know === 'notes' ? notes() : reading());
+// Commonplace book＋第二大腦（Tiago Forte）：擷取 Capture → 整理 Organize（PARA）→ 萃取 Distill（一句話重點）→ 表達 Express（轉成小卡）
+const PARA = [['P', '專案'], ['A', '領域'], ['R', '資源'], ['X', '封存']];
+window.cpAdd = () => { const t = $('#ct').value.trim(); if (!t) return; put('quote', { text: t, src: val('cs'), page: val('cpg'), thought: $('#cth').value.trim(), para: val('cpa'), gist: '', date: today(), created: Date.now() }); render(); };
+window.cpEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] || ''); if (v === null) return; patch(id, { [k]: v.trim() }); render(); };
+window.cpPara = (id, v) => { patch(id, { para: v }); render(); };
+window.cpToCard = id => { const x = DB[id].data; sub.know = 'notes'; ui.note = null; ui.draft = `${x.gist || ''}\n\n「${x.text}」${x.thought ? '\n\n' + x.thought : ''}`.trim(); ui.draftSrc = x.src + (x.page ? ` p.${x.page}` : ''); render(); scrollTo(0, 0); };
+function commonplace() {
+  const q = ui.cq.toLowerCase(), f = ui.cpf || '', qs = all('quote').sort((a, b) => (b.created || 0) - (a.created || 0)).filter(x => (!f || (x.para || 'R') === f) && (!q || (x.text + x.src + x.thought + (x.gist || '')).toLowerCase().includes(q)));
+  return `<div class="card"><h2>擷取</h2><textarea id="ct" style="min-height:84px" placeholder="抄下打動你的一段話"></textarea><div class="row"><input id="cs" list="bks" placeholder="出處（書名／作者）" style="flex:3"><datalist id="bks">${all('book').map(b => `<option value="${esc(b.title)}">`).join('')}</datalist><input id="cpg" placeholder="頁碼" style="flex:1"></div>
+    <textarea id="cth" style="min-height:60px" placeholder="我的想法：為什麼留下它、可以怎麼用"></textarea>
+    <div class="row"><select id="cpa" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${k === 'R' ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b" style="flex:2" onclick="cpAdd()">收進 Commonplace</button></div></div>
+  <div class="row" style="align-items:center"><input placeholder="搜尋摘錄" value="${esc(ui.cq)}" onchange="ui.cq=this.value;render()"></div>
+  <div class="seg" style="margin-top:6px">${[['', '全部'], ...PARA].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" onclick="ui.cpf='${k}';render()">${n}</button>`).join('')}</div>
+  ${qs.map(x => `<div class="card"><blockquote class="qt">${esc(x.text)}</blockquote><div class="mut" style="display:flex;justify-content:space-between"><span>— ${esc(x.src) || '未註明出處'}${x.page ? `，p.${esc(x.page)}` : ''}</span><button class="x" onclick="confirm('刪除這則摘錄？')&&del('${x.id}')">✕</button></div>${x.thought ? `<p style="margin:8px 0 0">${esc(x.thought)}</p>` : ''}
+    <p style="margin:10px 0 6px"><span class="eyebrow">一句話重點</span><br><a class="wl" onclick="cpEdit('${x.id}','gist','用自己的話，一句話說出重點')">${esc(x.gist) || '還沒萃取，點這裡寫一句'}</a></p>
+    <div class="row" style="align-items:center"><select style="flex:0 0 96px;margin:0" onchange="cpPara('${x.id}',this.value)" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${(x.para || 'R') === k ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b g" style="margin:0" onclick="cpToCard('${x.id}')">轉成知識小卡</button></div></div>`).join('') || '<div class="card"><p class="empty">還沒有摘錄</p></div>'}
+  <p class="mut" style="margin:12px 2px">第二大腦的流程：擷取 → 整理（專案／領域／資源／封存）→ 萃取成一句話 → 轉成小卡，變成自己的東西。</p>`;
+}
+const know = () => seg('know', [['read', '目前閱讀・書單'], ['cp', 'Commonplace Book'], ['notes', '知識小卡']]) + (sub.know === 'notes' ? notes() : sub.know === 'cp' ? commonplace() : reading());
 
 // ---------- 今日總覽（儀表板） ----------
 const DEF_ID = '我是一個有系統、持續精進的人', DEF_QUOTE = '我允許自己既是傑作，也是進行中的作品。';
@@ -274,19 +347,19 @@ function weekStrip(days) {
 }
 function home() {
   const f = fitStats(), P = finSum('personal'), F = finSum('family'), goalMin = setting('goal', 150);
-  const todo = all('bullet').filter(b => b.kind === 'task' && b.state === 'open' && b.date <= today());
+  const todo = todosOpen();
   const rd = all('book').filter(b => b.status === 'reading'), hs = all('habit'), hToday = hs.filter(h => hDone(h.id, today())).length;
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項待辦`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const stat = { bujo: `${todo.length} 項未完成`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date)]);
   return `<div class="card hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
       ${cfg().token ? '' : `<br><span class="chip" onclick="$('#sync').click()">尚未同步 · 點此設定</span>`}</div><div class="hero-art">${HERO_ART}</div></div>
   ${weekStrip(active)}
   <div class="dash"><div class="dc">
-    <div class="card"><h2>今日待辦</h2>${todo.slice(0, 6).map(b => `<div class="item"><span><i class="dot" onclick="bujoCycle('${b.id}')"></i>${esc(b.text)}</span><span class="mut">${b.date === today() ? '' : b.date.slice(5)}</span></div>`).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}</div>
+    <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     <div class="card"><h2>今日習慣</h2>${hs.map(x => `<div class="item"><span><i class="dot ${hDone(x.id, today()) ? 'on' : ''}" onclick="habitToggle('${x.id}','${today()}')"></i>${esc(x.name)}</span><span class="mut">${esc(x.tiny || '')}</span></div>`).join('') || `<p class="empty">還沒有習慣 · <a class="wl" onclick="go('habit')">建立第一個</a></p>`}</div>
   </div><aside class="dr">
     <div class="grid" style="margin-bottom:12px"><div class="card" onclick="go('fit')" style="cursor:pointer"><div class="eyebrow">本週運動</div><div class="big">${f.min}<small class="mut"> / ${goalMin}</small></div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, f.min / goalMin * 100)}%"></i></div><div class="mut">連續 ${f.streak} 天</div></div>
