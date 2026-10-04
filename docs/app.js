@@ -1,3 +1,4 @@
+const APP_VERSION = '1.1.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -59,6 +60,7 @@ $('#sync').onclick = () => {
   if (url.trim() !== (c.url || '')) { cursor = 0; } // 換後端要重新拉取全部
   LS('lh_cfg', { url: url.trim(), token: token.trim() }); persist(); sync();
 };
+$('h1').title = 'LifeHub v' + APP_VERSION; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
 setInterval(sync, 15000); addEventListener('online', sync); document.addEventListener('visibilitychange', () => !document.hidden && sync());
 
 // ---------- 導覽 ----------

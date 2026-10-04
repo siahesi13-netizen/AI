@@ -42,3 +42,10 @@ function doPost(e) {
     return out_({ cursor: seq });
   } finally { lock.releaseLock(); }
 }
+
+// ---------- 自動備份 ----------
+// 每日備份：複製整份試算表到雲端硬碟「LifeHub 備份」資料夾，保留最近 30 份。由觸發條件呼叫。
+function dailyBackup() { const it = DriveApp.getFoldersByName('LifeHub 備份'); const folder = it.hasNext() ? it.next() : DriveApp.createFolder('LifeHub 備份'); const stamp = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HHmm'); DriveApp.getFileById(SpreadsheetApp.getActive().getId()).makeCopy('LifeHub 備份 ' + stamp, folder); const files = [], fi = folder.getFiles(); while (fi.hasNext()) files.push(fi.next()); files.sort((a, b) => b.getDateCreated() - a.getDateCreated()); files.slice(30).forEach(f => f.setTrashed(true)); }
+
+// 只需手動執行一次：建立每天凌晨 3 點的備份觸發條件（重複執行不會重複建立），並立刻備份一次。
+function installBackupTrigger() { ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'dailyBackup').forEach(t => ScriptApp.deleteTrigger(t)); ScriptApp.newTrigger('dailyBackup').timeBased().everyDays(1).atHour(3).create(); dailyBackup(); }
