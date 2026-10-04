@@ -11,7 +11,7 @@ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 header{display:flex;justify-content:space-between;align-items:center;padding:max(18px,env(safe-area-inset-top)) 2px 12px}
 .brand{display:flex;align-items:baseline;gap:10px}
 h1,h2,.serif,.big{font-family:"Noto Serif TC","Songti TC",serif}
-h1{margin:0;font-size:21px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+h1{margin:0;font:italic 600 25px/1.2 "Cormorant Garamond","Noto Serif TC",serif;letter-spacing:.01em;cursor:pointer}
 .brand em{font:italic 500 15px "Cormorant Garamond","Noto Serif TC",serif;color:var(--mut);letter-spacing:.02em}
 h2{font-size:15px;margin:0 0 10px;font-weight:700;letter-spacing:.03em}
 .eyebrow{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mut)}
@@ -35,6 +35,7 @@ button.b{background:var(--ac);color:var(--btntx);border:0;font-weight:600;cursor
 a.wl{color:var(--link);cursor:pointer;text-decoration:underline;text-decoration-color:var(--clay);text-underline-offset:3px}
 pre{white-space:pre-wrap;font:inherit;margin:0}
 .empty{color:var(--mut);font-size:13px;margin:4px 0}
+.dot.on{background:var(--bar)}
 .dot{display:inline-block;width:16px;height:16px;border:1.5px solid var(--bar);border-radius:50%;margin-right:10px;vertical-align:-3px;cursor:pointer}
 /* 今日 */
 .hero{display:flex;justify-content:space-between;gap:10px;padding:0;overflow:hidden}
@@ -47,20 +48,27 @@ pre{white-space:pre-wrap;font:inherit;margin:0}
 .week i{display:block;width:5px;height:5px;border-radius:50%;margin:3px auto 0;background:transparent}.week i.on{background:var(--bar)}.week .today{background:var(--soft)}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow)}
-.tile svg.cv{display:block;width:100%;height:74px}.tile .tl{padding:9px 12px 11px}.tile .tn{display:flex;align-items:center;gap:7px;font-weight:600}.tile .ic{width:16px;height:16px;color:var(--cocoa)}
+.tile svg.cv{display:block;width:100%;height:58px}.tile .tl{padding:9px 12px 11px}.tile .tn{display:flex;align-items:center;gap:7px;font-weight:600}.tile .ic{width:16px;height:16px;color:var(--cocoa)}
 .dash{display:grid;grid-template-columns:1fr;gap:0}.dc,.dr{min-width:0}
 .book{display:flex;gap:12px;align-items:center}.cover{width:44px;height:62px;border-radius:2px 6px 6px 2px;background:var(--cocoa);color:var(--card);font:700 10.5px/1.25 "Noto Serif TC",serif;padding:6px;display:flex;align-items:flex-end;box-shadow:inset 3px 0 0 rgba(0,0,0,.12)}
 .quote{text-align:center;font:500 14px/1.9 "Noto Serif TC",serif;color:var(--link);cursor:pointer;background:var(--soft);box-shadow:none}
+/* 習慣／喝水的圓形打勾格 */
+.hw{display:flex;gap:6px;flex-wrap:wrap}
+.hc{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--bg);color:var(--mut);padding:0;cursor:pointer;font:inherit;display:flex;align-items:center;justify-content:center}
+.hc small{font-size:11px}.hc.td{border-color:var(--bar)}.hc.on{background:var(--cocoa);border-color:var(--cocoa);color:var(--card)}.hc:disabled{opacity:.35;cursor:default}
+button:disabled{opacity:.4}
 /* 導覽 */
-nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
-nav button{flex:1;background:none;border:0;color:var(--mut);padding:9px 0 7px;font-size:10.5px;letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;overflow-x:auto;scrollbar-width:none;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav::-webkit-scrollbar{display:none}.nl{display:none}
+nav button{flex:1 0 62px;background:none;border:0;color:var(--mut);padding:9px 0 7px;font-size:10.5px;letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
 nav button.on{color:var(--tx);font-weight:700}nav button.on .ic{color:var(--cocoa)}
-@media(min-width:700px){.tiles{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:700px){.tiles{grid-template-columns:repeat(4,1fr)}.tile svg.cv{height:70px}}
 @media(min-width:1000px){.dash{grid-template-columns:1fr 300px;gap:16px}}
 @media(min-width:860px){
   body{padding-bottom:40px}
-  #shell{display:grid;grid-template-columns:150px 1fr;gap:28px}
+  #shell{display:grid;grid-template-columns:172px 1fr;gap:28px}
   nav{position:static;display:block;border:0;background:none;padding:68px 0 0;z-index:auto}
-  nav button{flex-direction:row;gap:10px;width:100%;padding:8px 10px;font-size:13.5px;letter-spacing:.04em;border-radius:10px;color:var(--mut)}
+  .nl{display:inline}.ns{display:none}
+  nav button{flex:none;flex-direction:row;gap:10px;width:100%;text-align:left;padding:8px 10px;font-size:13.5px;letter-spacing:.04em;border-radius:10px;color:var(--mut)}
   nav button.on{background:var(--card);box-shadow:var(--shadow);color:var(--tx)}
 }
