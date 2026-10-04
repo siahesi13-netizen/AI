@@ -1,6 +1,9 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.2.1] - 2026-10-04
+- 移除頁首圖片，改為單一底色（Ivory）；全站配色嚴格取自色票（Ivory／Moss／Smoke／Garden／Midnight），移除色票外的紅綠色；深色模式以 Midnight 為底
+
 ## [1.2.0] - 2026-10-04
 - 視覺系統換成方案 C（植物 Notion 頁）：Ivory／Moss／Smoke／Garden／Midnight 配色、植物頁首（每分頁不同）、細線卡片、淺／深色自動切換
 - 導覽：手機底部分頁、桌機左側「快速連結」
