@@ -1,4 +1,4 @@
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,12 +60,16 @@ $('#sync').onclick = () => {
   if (url.trim() !== (c.url || '')) { cursor = 0; } // 換後端要重新拉取全部
   LS('lh_cfg', { url: url.trim(), token: token.trim() }); persist(); sync();
 };
+const IC = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+// 外觀：預設淺色，不跟隨系統；右上角按鈕切換（每台裝置各自記住）
+const SUN = IC('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'), MOON = IC('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>');
+function applyTheme(t) { document.documentElement.dataset.theme = t; localStorage.setItem('lh_theme', t); $('#theme').innerHTML = t === 'dark' ? SUN : MOON; document.querySelector('meta[name=theme-color]').content = t === 'dark' ? '#1F1B17' : '#FAF8F4'; }
+$('#theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 $('h1').title = 'LifeHub v' + APP_VERSION; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
 setInterval(sync, 15000); addEventListener('online', sync); document.addEventListener('visibilitychange', () => !document.hidden && sync());
 
 
 // ---------- 導覽 ----------
-const IC = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICON = {
   home: IC('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'),
   bujo: IC('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".9"/><circle cx="4.5" cy="12" r=".9"/><circle cx="4.5" cy="18" r=".9"/>'),
@@ -220,5 +224,6 @@ function home() {
   </aside></div>`;
 }
 const VIEWS = { home, bujo, fit, fin, know };
+applyTheme(localStorage.getItem('lh_theme') || 'light');
 render(); sync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
