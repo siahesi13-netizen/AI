@@ -1,12 +1,18 @@
 <!doctype html>
 <html lang="zh-Hant"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f172a"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#FCFBF9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#1E2027" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon.svg">
 <title>LifeHub</title><link rel="stylesheet" href="style.css"></head>
 <body>
-<header><h1>LifeHub</h1><span id="sync" title="點擊立即同步">●</span></header>
-<main id="view"></main>
-<nav id="tabs"></nav>
+<div id="hero"></div>
+<div id="shell">
+  <nav id="tabs"></nav>
+  <div id="content">
+    <header><h1>— LifeHub</h1><span id="sync" title="點擊立即同步">●</span></header>
+    <main id="view"></main>
+  </div>
+</div>
 <script src="app.js"></script>
 </body></html>
