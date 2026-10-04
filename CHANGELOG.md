@@ -1,6 +1,10 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.8.1] - 2026-10-04
+- 新的 App 圖示（暖米底＋拱形、圓、半圓色塊，與站內配色一致），提供 iOS／Android 用的 PNG
+- 主畫面名稱改為「Eilis」；完整名稱 Eilis’ Personal Dashboard
+
 ## [1.8.0] - 2026-10-04
 - 版面可自訂：右上角「編輯版面」進入編輯模式，每個區塊可按住拖曳或用 ↑ ↓ 移動；每個頁面（含分頁）各自記住順序並跨裝置同步；可恢復預設
 - 今日頁改為可重排的兩欄格狀版面（手機單欄）
