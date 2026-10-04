@@ -62,6 +62,10 @@ details.card summary{list-style:none}details.card summary::-webkit-details-marke
 .mc.sub{background:var(--sand)}.mc.ctr{background:var(--clay);font-weight:700}.mc.core{background:var(--cocoa);color:var(--card);font:700 14px/1.35 "Noto Serif TC",serif}
 .mand9{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mand.mini{gap:2px}.mand.mini .mc{font-size:8px;border-radius:4px;padding:1px;line-height:1.15}
 .m9{display:none}@media(min-width:700px){.m9{display:block}.mand{max-width:520px;margin:auto}.mand9 .mand{max-width:none}}
+/* 購物清單四象限 */
+.quad{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px}.quad .card{margin:0;border-top:3px solid var(--line)}
+.quad .q-need{border-top-color:var(--cocoa)}.quad .q-want{border-top-color:var(--sage)}.quad .q-u{background:var(--soft)}
+@media(min-width:700px){.quad{grid-template-columns:1fr 1fr}}
 /* 知識小卡（索引卡樣式） */
 .kgrid{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:760px){.kgrid{grid-template-columns:1fr 1fr}}
 .kcard{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px 10px;box-shadow:var(--shadow);background-image:repeating-linear-gradient(transparent,transparent 25px,var(--soft) 25px,var(--soft) 26px);background-position:0 40px}

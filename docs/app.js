@@ -1,4 +1,4 @@
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,7 +84,7 @@ const ICON = {
 // [key, 側邊欄名稱, 英文副標, 手機底部短名]
 const TABS = [['home', '今日', 'Today', '今日'], ['bujo', '待辦事項', 'To-do', '待辦'], ['habit', '每週習慣建立', 'Weekly Habits', '習慣'], ['diet', '飲食管理', 'Nutrition', '飲食'], ['fit', '運動管理', 'Movement', '運動'],
   ['ffin', '家庭財務', 'Family Finance', '家庭'], ['pfin', '個人財務', 'Personal Finance', '個人'], ['know', '閱讀', 'Reading', '閱讀'], ['goal', '未來目標', 'Future Goals', '目標']];
-let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
+let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list', tpage: 'todo' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
 $('#tabs').innerHTML = TABS.map(([k, n, , sn]) => `<button data-k="${k}">${ICON[k]}<span class="nl">${n}</span><span class="ns">${sn}</span></button>`).join('');
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
@@ -113,7 +113,7 @@ window.todoStar = id => { patch(id, { star: !DB[id].data.star }); render(); };
 const todoSort = (a, b) => (b.star - a.star) || (a.due || '9999').localeCompare(b.due || '9999') || (a.created - b.created);
 const todosOpen = () => all('todo').filter(t => !t.done).sort(todoSort);
 const todoRow = t => `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${t.done ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="todoToggle('${t.id}')"></i><span style="${t.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(t.text)}${t.due ? ` <span class="mut ${t.due < today() && !t.done ? 'bad' : ''}">${t.due === today() ? '今天' : t.due.slice(5)}</span>` : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" style="${t.star ? 'color:var(--bar)' : ''}" onclick="todoStar('${t.id}')" aria-label="重要">${t.star ? '★' : '☆'}</button><button class="x" onclick="del('${t.id}')" aria-label="刪除">✕</button></span></div>`;
-function bujo() {
+function todoList() {
   const ts = all('todo'), open = todosOpen(), f = sub.todo, lists = [...new Set([...TODO_LISTS, ...ts.map(t => t.list)])];
   const shown = open.filter(t => f === 'all' ? true : f === 'today' ? (t.due && t.due <= today()) : f === 'star' ? t.star : t.list === f);
   const done = ts.filter(t => t.done).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || '')).slice(0, 30);
@@ -124,6 +124,24 @@ function bujo() {
   ${groups.map(g => { const l = g === null ? shown : shown.filter(t => t.list === g); return l.length ? `<div class="card">${g ? `<div class="eyebrow">${esc(g)}</div>` : ''}${l.map(todoRow).join('')}</div>` : ''; }).join('') || '<div class="card"><p class="empty">這裡沒有待辦，很好。</p></div>'}
   ${done.length ? `<details class="card"><summary class="mut" style="cursor:pointer">已完成（最近 ${done.length} 筆）</summary>${done.map(todoRow).join('')}</details>` : ''}`;
 }
+
+// ---------- 購物清單（必要／想要 × 緊急／不緊急） ----------
+const QUAD = [['need', true, '必要 · 緊急', '先買'], ['need', false, '必要 · 不緊急', '排進採買'], ['want', true, '想要 · 緊急', '先想一想'], ['want', false, '想要 · 不緊急', '放進願望清單']];
+window.shopAdd = () => { const n = val('sn'); if (!n) return; put('shop', { name: n, need: val('sk'), urgent: val('su') === '1', price: +val('sp') || 0, bought: false, created: Date.now() }); render(); setTimeout(() => $('#sn') && $('#sn').focus()); };
+window.shopFlip = (id, k) => { const d = DB[id].data; patch(id, k === 'need' ? { need: d.need === 'need' ? 'want' : 'need' } : { urgent: !d.urgent }); render(); };
+window.shopBuy = id => { const d = DB[id].data; patch(id, { bought: !d.bought, boughtAt: d.bought ? null : today() }); render(); };
+const shopRow = x => `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${x.bought ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="shopBuy('${x.id}')"></i><span style="${x.bought ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(x.name)}${x.price ? ` <span class="mut">${money(x.price)}</span>` : ''}</span></span>
+  <span style="flex:none;white-space:nowrap">${x.bought ? '' : `<span class="tag" onclick="shopFlip('${x.id}','need')" title="點一下切換">${x.need === 'need' ? '必要' : '想要'}</span><span class="tag" onclick="shopFlip('${x.id}','urgent')" title="點一下切換">${x.urgent ? '緊急' : '不急'}</span>`}<button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`;
+function shopList() {
+  const xs = all('shop'), open = xs.filter(x => !x.bought).sort((a, b) => a.created - b.created), bought = xs.filter(x => x.bought).sort((a, b) => (b.boughtAt || '').localeCompare(a.boughtAt || '')).slice(0, 30);
+  const sum = l => l.reduce((a, x) => a + (x.price || 0), 0);
+  return `<div class="card"><input id="sn" placeholder="想買什麼，按 Enter 新增" onkeydown="event.key==='Enter'&&shopAdd()">
+    <div class="row"><select id="sk" aria-label="必要或想要"><option value="need">必要</option><option value="want">想要</option></select><select id="su" aria-label="緊急程度"><option value="0">不緊急</option><option value="1">緊急</option></select><input id="sp" type="number" inputmode="decimal" placeholder="預估金額"></div><button class="b" onclick="shopAdd()">加入清單</button></div>
+  <div class="quad">${QUAD.map(([k, u, title, hint]) => { const l = open.filter(x => x.need === k && !!x.urgent === u); return `<div class="card q-${k}${u ? ' q-u' : ''}"><div class="item" style="border:0;padding:0 0 4px"><span><b class="serif">${title}</b><div class="mut">${hint}</div></span><span class="mut">${l.length} 項${sum(l) ? ' · ' + money(sum(l)) : ''}</span></div>${l.map(shopRow).join('') || '<p class="empty">沒有項目</p>'}</div>`; }).join('')}</div>
+  <p class="mut" style="margin:0 2px 12px">未買合計 ${money(sum(open))}（必要 ${money(sum(open.filter(x => x.need === 'need')))}、想要 ${money(sum(open.filter(x => x.need === 'want')))}）。點「必要／想要」「緊急／不急」的小標籤可以直接換格子。</p>
+  ${bought.length ? `<details class="card"><summary class="mut" style="cursor:pointer">已購買（最近 ${bought.length} 筆）</summary>${bought.map(shopRow).join('')}</details>` : ''}`;
+}
+const bujo = () => seg('tpage', [['todo', `待辦 ${todosOpen().length}`], ['shop', `購物清單 ${all('shop').filter(x => !x.bought).length}`]]) + (sub.tpage === 'shop' ? shopList() : todoList());
 
 // ---------- 每週記錄（子彈筆記：• 任務 ○ 事件 – 筆記），顯示在「每週習慣建立」頁 ----------
 const SYM = { task: '•', event: '○', note: '–' };
@@ -352,7 +370,7 @@ function home() {
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項未完成`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date)]);
   return `<div class="card hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
