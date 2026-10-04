@@ -16,7 +16,7 @@ h1{margin:0;font:italic 600 25px/1.2 "Cormorant Garamond","Noto Serif TC",serif;
 h2{font-size:15px;margin:0 0 10px;font-weight:700;letter-spacing:.03em}
 .eyebrow{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mut)}
 .ptitle{margin:2px 2px 12px}.ptitle h2{font-size:24px;margin:0}.ptitle .eyebrow{font:italic 500 14px "Cormorant Garamond",serif;letter-spacing:.04em;text-transform:none}
-#theme{background:none;border:0;color:var(--mut);cursor:pointer;padding:4px;margin-right:10px;display:inline-flex}
+.hbtn{background:none;border:0;color:var(--mut);cursor:pointer;padding:4px;margin-right:8px;display:inline-flex;border-radius:8px}.hbtn.on{color:var(--btntx);background:var(--ac)}
 #sync{cursor:pointer;color:var(--line);font-size:12px}#sync.ok{color:var(--ok)}#sync.err{color:var(--bad)}
 .ic{width:20px;height:20px;flex:none}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
@@ -91,3 +91,16 @@ nav button.on{color:var(--tx);font-weight:700}nav button.on .ic{color:var(--coco
   nav button{flex:none;flex-direction:row;gap:10px;width:100%;text-align:left;padding:8px 10px;font-size:13.5px;letter-spacing:.04em;border-radius:10px;color:var(--mut)}
   nav button.on{background:var(--card);box-shadow:var(--shadow);color:var(--tx)}
 }
+
+/* 可拖曳的版面區塊 */
+.blk{position:relative;min-width:0}
+#view.two{display:grid;grid-template-columns:1fr;column-gap:16px;align-items:start}
+@media(min-width:1000px){#view.two{grid-template-columns:1fr 1fr}#view.two>.full{grid-column:1/-1}}
+.editing .blk{outline:1.5px dashed var(--bar);outline-offset:2px;border-radius:14px;margin:14px 0 24px}
+.blk.dragging{opacity:.5}
+.grip{display:none;position:absolute;top:-14px;right:10px;z-index:3;background:var(--ac);color:var(--btntx);border-radius:99px;align-items:center;overflow:hidden;box-shadow:var(--shadow);font-size:12.5px}
+.editing .grip{display:flex}
+.grip button{background:none;border:0;color:inherit;font:inherit;padding:4px 11px;cursor:pointer}
+.grip-h{padding:4px 12px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-left:1px solid rgba(128,128,128,.4);border-right:1px solid rgba(128,128,128,.4)}
+.editbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:14px;font-size:12.5px;color:var(--mut)}
+.editbar button{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 12px;font:inherit;color:var(--tx);cursor:pointer;margin-left:6px}
