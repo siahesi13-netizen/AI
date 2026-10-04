@@ -1,4 +1,4 @@
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,8 +60,24 @@ $('#sync').onclick = () => {
   if (url.trim() !== (c.url || '')) { cursor = 0; } // 換後端要重新拉取全部
   LS('lh_cfg', { url: url.trim(), token: token.trim() }); persist(); sync();
 };
-$('h1').title = 'LifeHub v' + APP_VERSION; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
+$('h1').title = 'LifeHub v' + APP_VERSION; $('h1').style.cursor = 'pointer'; $('h1').onclick = () => alert('LifeHub v' + APP_VERSION);
 setInterval(sync, 15000); addEventListener('online', sync); document.addEventListener('visibilitychange', () => !document.hidden && sync());
+
+
+// ---------- 植物頁首（程式生成的簡易植物插畫，每個分頁一個種子） ----------
+function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function botanical(seed, w = 1200, h = 200) {
+  const r = rng(seed), cols = ['#8E9279', '#B6B8AB', '#6B6F5A', '#C9C7B5'], pick = a => a[Math.floor(r() * a.length)], out = [];
+  for (let i = 0; i < 22; i++) {
+    const x = r() * w, base = h + 10, top = h * (.05 + r() * .55), c = pick(cols), bend = (r() - .5) * 120;
+    out.push(`<path d="M${x | 0} ${base} Q${(x + bend / 2) | 0} ${((base + top) / 2) | 0} ${(x + bend) | 0} ${top | 0}" stroke="${c}" stroke-width="1.6" fill="none" opacity=".8"/>`);
+    for (let k = 0, n = 4 + Math.floor(r() * 6); k < n; k++) {
+      const t = .2 + r() * .8, px = x + bend * t * t, py = base + (top - base) * t, ang = (r() < .5 ? -1 : 1) * (20 + r() * 40), L = 14 + r() * 16;
+      out.push(`<ellipse cx="${(px + ang / 3) | 0}" cy="${py | 0}" rx="${(L / 2) | 0}" ry="${(L / 5) | 0}" transform="rotate(${ang | 0} ${px | 0} ${py | 0})" fill="${pick(cols)}" opacity="${(.45 + r() * .4).toFixed(2)}"/>`);
+    }
+  }
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">${out.join('')}</svg>`;
+}
 
 // ---------- 導覽 ----------
 const TABS = [['home', '📊', '今日'], ['bujo', '📓', '子彈'], ['fit', '🏃', '運動'], ['fin', '💰', '財務'], ['know', '🧠', '知識']];
@@ -70,6 +86,7 @@ $('#tabs').innerHTML = TABS.map(([k, i, n]) => `<button data-k="${k}"><span>${i}
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.k === tab));
+  $('#hero').innerHTML = botanical(TABS.findIndex(t => t[0] === tab) + 3);
   $('#view').innerHTML = VIEWS[tab]();
 }
 const val = id => $('#' + id)?.value.trim();
@@ -156,7 +173,7 @@ function notes() {
   return `<div class="card"><h2>${ui.note ? '編輯筆記' : '新筆記'}</h2><input id="nt" placeholder="標題" value="${esc(cur.title)}"><textarea id="nb" placeholder="內容，用 [[標題]] 連結其他筆記">${esc(cur.body)}</textarea><input id="ng" placeholder="標籤（逗號分隔）" value="${esc(cur.tags.join(', '))}">
   <div class="row"><button class="b" onclick="noteSave()">儲存</button>${ui.note ? '<button class="b g" onclick="ui.note=null;render()">取消</button>' : ''}</div></div>
   <input placeholder="🔍 搜尋筆記" value="${esc(ui.q)}" oninput="ui.q=this.value;clearTimeout(window._t);window._t=setTimeout(()=>{render();const i=$('input[placeholder^=🔍]');i.focus();i.setSelectionRange(99,99)},250)">
-  <div>${tags.map(t => `<span class="tag" style="${ui.tag === t ? 'background:var(--ac);color:#fff' : ''}" onclick="noteFilter('tag','${ui.tag === t ? '' : esc(t)}')">#${esc(t)}</span>`).join('')}</div>
+  <div>${tags.map(t => `<span class="tag" style="${ui.tag === t ? 'background:var(--ac);color:var(--btntx)' : ''}" onclick="noteFilter('tag','${ui.tag === t ? '' : esc(t)}')">#${esc(t)}</span>`).join('')}</div>
   ${list.sort((a, b) => b.title.localeCompare(a.title)).map(n => { const back = ns.filter(o => o.id !== n.id && o.body.includes(`[[${n.title}]]`)).length;
     return `<div class="card"><div class="item" style="border:0;padding:0"><b>${esc(n.title)}</b><span><button class="x" onclick="noteEdit('${n.id}')">✎</button><button class="x" onclick="confirm('刪除？')&&del('${n.id}')">✕</button></span></div><pre>${link(n.body)}</pre>${n.tags.map(t => `<span class="tag">#${esc(t)}</span>`).join('')}${back ? `<span class="mut"> ← ${back} 則反向連結</span>` : ''}</div>`; }).join('') || '<p class="mut">沒有符合的筆記</p>'}`;
 }
