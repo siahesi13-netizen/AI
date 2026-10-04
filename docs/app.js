@@ -1,4 +1,4 @@
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -171,19 +171,31 @@ function reading() {
 }
 const know = () => `<div class="row"><button class="b ${sub.know === 'notes' ? '' : 'g'}" onclick="knowSub('notes')">🗒 筆記</button><button class="b ${sub.know === 'read' ? '' : 'g'}" onclick="knowSub('read')">📚 閱讀清單</button></div>` + (sub.know === 'notes' ? notes() : reading());
 
-// ---------- 今日總覽 ----------
+// ---------- 今日總覽（儀表板） ----------
+const DEF_ID = '我是一個有系統、持續精進的人', DEF_QUOTE = '我允許自己既是傑作，也是進行中的作品。';
+window.editSetting = (k, label, d) => { const v = prompt(label, setting(k, d)); if (v !== null && v.trim()) { setSetting(k, v.trim()); render(); } };
+window.go = t => { tab = t; render(); scrollTo(0, 0); };
 function home() {
   const f = fitStats(), m = month(today()), t = all('txn').filter(x => month(x.date) === m);
   const out = t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), inc = t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0);
   const todo = all('bullet').filter(b => b.kind === 'task' && b.state === 'open' && b.date <= today());
-  const rd = all('book').filter(b => b.status === 'reading');
-  const goal = setting('goal', 150);
-  return `<div class="card"><h2>${new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' })}</h2>${cfg().token ? '' : '<p class="bad">尚未設定同步金鑰，點右上角 ● 輸入（目前僅存在本機）</p>'}</div>
-  <div class="grid"><div class="card" onclick="tab='fit';render()"><div class="mut">本週運動</div><div class="big">${f.min}<small class="mut">/${goal}分</small></div><div class="mut">🔥 連續 ${f.streak} 天</div></div>
-  <div class="card" onclick="tab='fin';render()"><div class="mut">本月支出</div><div class="big bad">${money(out)}</div><div class="mut">結餘 ${money(inc - out)}</div></div></div>
-  <div class="card"><h2>待辦（${todo.length}）</h2>${todo.slice(0, 8).map(b => `<div class="item"><span><a class="wl" onclick="bujoCycle('${b.id}')" style="text-decoration:none;font-size:20px;margin-right:8px">•</a>${esc(b.text)}</span></div>`).join('') || '<p class="mut">全部完成 🎉</p>'}</div>
-  <div class="card" onclick="tab='know';sub.know='read';render()"><h2>閱讀中</h2>${rd.map(b => `<div class="mut">${esc(b.title)} ${b.pages ? Math.round(b.cur / b.pages * 100) + '%' : ''}</div>`).join('') || '<p class="mut">尚無</p>'}</div>
-  <div class="card"><h2>筆記</h2><div class="mut">共 ${all('note').length} 則</div></div>`;
+  const rd = all('book').filter(b => b.status === 'reading'), goal = setting('goal', 150), budget = setting('budget', 20000);
+  const h = new Date().getHours(), greet = h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
+  const date = new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' });
+  const sync = cfg().token ? '' : '<p class="bad">尚未設定同步金鑰，點右上角 ● 輸入（目前僅存在本機）</p>';
+  const recent = f.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+  return `<div class="dash"><div class="dc">
+    <div class="card hello"><div class="eyebrow">${date}</div><h2>${greet}，今天也慢慢前進</h2>
+      <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>${sync}</div>
+    <div class="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, i, n]) => `<div class="tile" onclick="go('${k}')"><span>${i}</span>${n}</div>`).join('')}</div>
+    <div class="card"><h2>今日待辦（${todo.length}）</h2>${todo.slice(0, 8).map(b => `<div class="item"><span><a class="wl" onclick="bujoCycle('${b.id}')" style="text-decoration:none;font-size:20px;margin-right:8px">•</a>${esc(b.text)}</span></div>`).join('') || '<p class="mut">全部完成</p>'}</div>
+    <div class="card"><h2>最近運動</h2>${recent.map(x => `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min}分${x.km ? ' · ' + x.km + 'km' : ''}</span></div>`).join('') || '<p class="mut">尚無記錄</p>'}</div>
+  </div><aside class="dr">
+    <div class="card"><h2>目前閱讀</h2>${rd.slice(0, 2).map(b => `<div class="book" style="margin-bottom:10px"><div class="cover">${esc(b.title.slice(0, 12))}</div><div style="flex:1"><b>${esc(b.title)}</b><div class="mut">${esc(b.author)}</div>${b.pages ? `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><div class="mut">${Math.round(b.cur / b.pages * 100)}%</div>` : ''}</div></div>`).join('') || '<p class="mut">尚無</p>'}</div>
+    <div class="card" onclick="go('fit')" style="cursor:pointer"><h2>本週運動</h2><div class="big">${f.min}<small class="mut"> / ${goal} 分</small></div><div class="bar" style="margin-top:8px"><i style="width:${Math.min(100, f.min / goal * 100)}%"></i></div><div class="mut" style="margin-top:6px">連續 ${f.streak} 天</div></div>
+    <div class="card" onclick="go('fin')" style="cursor:pointer"><h2>本月財務</h2><div class="mut">支出</div><div class="big">${money(out)}</div><div class="bar" style="margin:6px 0"><i style="width:${Math.min(100, out / budget * 100)}%"></i></div><div class="mut">結餘 ${money(inc - out)}</div></div>
+    <div class="card quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>
+  </aside></div>`;
 }
 const VIEWS = { home, bujo, fit, fin, know };
 render(); sync();

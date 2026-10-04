@@ -1,32 +1,29 @@
 /* 方案 C：植物 Notion 頁 — Ivory / Moss / Smoke / Garden / Midnight */
-/* 配色（嚴格取自方案 C 色票）：Ivory #F3F1EC · Moss #B6B8AB · Smoke #9FA3AD · Garden #E0DFD2 · Midnight #3C3E4A */
-:root{--ivory:#F3F1EC;--moss:#B6B8AB;--smoke:#9FA3AD;--garden:#E0DFD2;--midnight:#3C3E4A;
---bg:var(--ivory);--card:var(--ivory);--soft:var(--garden);--line:var(--garden);--tx:var(--midnight);
---mut:color-mix(in srgb,var(--midnight) 62%,var(--ivory));--ac:var(--midnight);--btntx:var(--ivory);--link:color-mix(in srgb,var(--midnight) 78%,var(--ivory));
---ok:color-mix(in srgb,var(--moss) 55%,var(--midnight));--bad:var(--midnight)}
-@media(prefers-color-scheme:dark){:root{--bg:color-mix(in srgb,var(--midnight) 62%,#000);--card:var(--midnight);--soft:color-mix(in srgb,var(--midnight) 82%,var(--ivory));--line:color-mix(in srgb,var(--midnight) 78%,var(--ivory));
---tx:var(--ivory);--mut:var(--smoke);--ac:var(--moss);--btntx:var(--midnight);--link:var(--moss);--ok:var(--moss);--bad:var(--garden)}}
+/* 配色：取自 Pinterest「Aesthetic Notion Life Dashboard」——奶油米白、淺米卡片、咖啡棕強調 */
+:root{--bg:#FBF3EA;--card:#F7EDE2;--soft:#F1E5D7;--line:#E8DCCD;--tx:#4A3B2E;--mut:#8E7A68;--ac:#87694B;--btntx:#FBF3EA;--link:#7D5F41;
+--ok:#7D8B66;--bad:#9C5B48;--bar:#B79B7C;--tagbg:#EBDFD0}
+@media(prefers-color-scheme:dark){:root{--bg:#2A221B;--card:#342B23;--soft:#3C3228;--line:#4A3E33;--tx:#F3E9DD;--mut:#B3A08C;--ac:#C9A47E;--btntx:#2A221B;--link:#D9B995;
+--ok:#A7B38F;--bad:#D39A92;--bar:#C9A47E;--tagbg:#463A2F}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.65 -apple-system,"PingFang TC","Noto Sans TC",sans-serif;padding-bottom:72px}
-#shell{max-width:980px;margin:auto;padding:0 16px}
+#shell{max-width:1180px;margin:auto;padding:0 16px}
 header{display:flex;justify-content:space-between;align-items:center;padding:18px 0 6px}
-h1{margin:0;font-size:28px;letter-spacing:-.01em;font-weight:700}h2{font-size:14px;margin:0 0 10px;font-weight:700;letter-spacing:.02em}
+h1,h2,.serif{font-family:"Noto Serif TC","Songti TC",serif}h1{margin:0;font-size:26px;letter-spacing:.01em;font-weight:700}h2{font-size:15px;margin:0 0 10px;font-weight:700;letter-spacing:.02em}
 #sync{cursor:pointer;color:var(--mut)}#sync.ok{color:var(--ok)}#sync.err{color:var(--bad)}
 main{padding-top:6px}
 header{padding-top:max(22px,env(safe-area-inset-top))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:12px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid>.card{margin-bottom:0}
 .big{font-size:26px;font-weight:700;letter-spacing:-.01em}.mut{color:var(--mut);font-size:13px}.ok{color:var(--ok)}.bad{color:var(--bad)}
-input,select,textarea,button.b{width:100%;padding:10px 12px;margin:4px 0;border-radius:6px;border:1px solid var(--garden);background:var(--card);color:var(--tx);font:inherit}
+input,select,textarea,button.b{width:100%;padding:10px 12px;margin:4px 0;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:inherit}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--smoke)}
 textarea{min-height:140px}
 button.b{background:var(--ac);color:var(--btntx);border:0;font-weight:600;cursor:pointer}button.b.g{background:none;color:var(--mut);border:1px solid var(--line)}
 .row{display:flex;gap:8px}.row>*{flex:1}
 .item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}.item:last-child{border:0}
 .x{background:none;border:0;color:var(--mut);font-size:18px;padding:0 6px;cursor:pointer}
-.tag{display:inline-block;background:var(--garden);border-radius:99px;padding:0 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--link);cursor:pointer}
-@media(prefers-color-scheme:dark){.tag{background:var(--soft)}}
-.bar{height:6px;background:var(--garden);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--moss)}
+.tag{display:inline-block;background:var(--tagbg);border-radius:99px;padding:0 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--link);cursor:pointer}
+.bar{height:7px;background:var(--line);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--bar)}
 a.wl{color:var(--link);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 pre{white-space:pre-wrap;font:inherit;margin:0}
 /* 導覽：手機＝底部分頁；桌機＝左側「快速連結」 */
@@ -40,3 +37,13 @@ nav button{flex:1;background:none;border:0;color:var(--mut);padding:9px 0;font-s
   nav button{display:block;width:100%;text-align:left;padding:6px 8px;font-size:14px;border-radius:6px;color:var(--tx)}
   nav button.on{background:var(--soft);font-weight:700}nav span{display:inline;font-size:14px;margin-right:8px}
 }
+
+/* 今日儀表板（參考範本：問候＋身分宣言、快速入口方塊、中欄主內容、右欄小卡片） */
+.dash{display:grid;grid-template-columns:1fr;gap:12px}.dash .card{margin-bottom:12px}.dc,.dr{min-width:0}
+.hello .eyebrow{font-size:12px;letter-spacing:.14em;color:var(--mut)}.hello h2{font-size:22px;margin:2px 0 8px}
+.idq{display:block;font:500 16px "Noto Serif TC",serif;color:var(--link);cursor:pointer;quotes:"「" "」";padding-left:12px;border-left:3px solid var(--bar)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px;margin-bottom:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 8px;text-align:center;cursor:pointer;font-size:13px;color:var(--tx)}.tile span{display:block;font-size:22px;margin-bottom:2px}.tile:hover{background:var(--soft)}
+.book{display:flex;gap:12px;align-items:center}.cover{width:46px;height:64px;border-radius:3px 6px 6px 3px;background:var(--ac);color:var(--btntx);font:700 11px/1.2 "Noto Serif TC",serif;padding:6px;display:flex;align-items:flex-end;box-shadow:2px 2px 0 var(--line)}
+.quote{text-align:center;font:500 14px/1.8 "Noto Serif TC",serif;color:var(--link);cursor:pointer;background:var(--soft)}
+@media(min-width:1000px){.dash{grid-template-columns:1fr 290px;gap:16px}}

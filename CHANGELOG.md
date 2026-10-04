@@ -1,6 +1,11 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.3.0] - 2026-10-04
+- 配色與排版改採 Pinterest「Aesthetic Notion Life Dashboard」風格：奶油米白底、咖啡棕強調、襯線標題
+- 今日頁改為儀表板：問候＋可編輯的身分宣言、快速入口方塊、今日待辦、最近運動；右欄為目前閱讀、本週運動、本月財務、每日一句（可編輯，跨裝置同步）
+- 桌機三欄（導覽／主區／右欄），手機單欄堆疊
+
 ## [1.2.1] - 2026-10-04
 - 移除頁首圖片，改為單一底色（Ivory）；全站配色嚴格取自色票（Ivory／Moss／Smoke／Garden／Midnight），移除色票外的紅綠色；深色模式以 Midnight 為底
 
