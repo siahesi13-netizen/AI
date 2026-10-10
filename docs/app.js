@@ -1,4 +1,4 @@
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -59,16 +59,21 @@ const b64d = t => decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_
 const setupCode = () => 'lh1:' + b64e(JSON.stringify({ u: cfg().url || '', t: cfg().token || '' }));
 function parseSetup(code) { try { const m = String(code).trim().match(/lh1:([A-Za-z0-9_-]+)/); if (!m) return null; const o = JSON.parse(b64d(m[1])); return typeof o.t === 'string' && o.t ? { url: o.u || '', token: o.t } : null; } catch (e) { return null; } }
 function saveCfg(n) { if (n.url !== (cfg().url || '')) cursor = 0; LS('lh_cfg', n); persist(); sync(); } // 換後端要重新拉取全部
-document.body.insertAdjacentHTML('beforeend', `<dialog id="cfgDlg"><h2>同步設定</h2>
-  <div class="eyebrow">同步網址</div><input id="cfgUrl" placeholder="Apps Script 部署網址（用本機伺服器請留空）" autocapitalize="off" autocorrect="off">
-  <div class="eyebrow" style="margin-top:6px">金鑰</div><input id="cfgTok" type="password" autocomplete="off">
-  <div class="row"><button class="b" id="cfgSave">儲存</button><button class="b g" id="cfgClose">關閉</button></div>
+document.body.insertAdjacentHTML('beforeend', `<dialog id="cfgDlg"><form id="cfgForm" method="dialog" autocomplete="on"><h2>同步設定</h2>
+  <div class="eyebrow">同步網址</div><input id="cfgUrl" name="username" autocomplete="username" placeholder="Apps Script 部署網址（用本機伺服器請留空）" autocapitalize="off" autocorrect="off">
+  <div class="eyebrow" style="margin-top:6px">金鑰</div><input id="cfgTok" name="password" type="password" autocomplete="current-password">
+  <div class="row"><button class="b" id="cfgSave" type="submit">儲存</button><button class="b g" id="cfgClose" type="button">關閉</button></div>
   <div class="eyebrow" style="margin-top:14px">設定碼</div><p class="mut" style="margin:2px 0 6px">把網址和金鑰合成一串。在已設定好的裝置按「複製」，到新裝置按「貼上」。設定碼等同金鑰，請勿外流。</p>
-  <div class="row"><button class="b g" id="cfgPaste">貼上設定碼</button><button class="b g" id="cfgCopy">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p></dialog>`);
+  <div class="row"><button class="b g" id="cfgPaste" type="button">貼上設定碼</button><button class="b g" id="cfgCopy" type="button">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p></form></dialog>`);
 const cfgMsg = t => { $('#cfgMsg').textContent = t; };
-$('#sync').onclick = () => { $('#cfgUrl').value = cfg().url || ''; $('#cfgTok').value = cfg().token || ''; cfgMsg(''); $('#cfgDlg').showModal(); };
+const openCfg = msg => { $('#cfgUrl').value = cfg().url || ''; $('#cfgTok').value = cfg().token || ''; cfgMsg(msg || ''); $('#cfgDlg').showModal(); };
+// 點圓點：這台裝置還沒設定時，先看剪貼簿有沒有設定碼（例如剛在 iPhone 複製，透過通用剪貼簿帶到 iPad），有就直接套用
+$('#sync').onclick = async () => {
+  if (!cfg().token) { let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { } const n = parseSetup(t); if (n) { saveCfg(n); render(); return alert('已從剪貼簿套用同步設定'); } return openCfg('還沒設定。在另一台裝置按「複製設定碼」，再回來點一次圓點就會自動套用。'); }
+  openCfg();
+};
 $('#cfgClose').onclick = () => $('#cfgDlg').close();
-$('#cfgSave').onclick = () => { saveCfg({ url: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() }); $('#cfgDlg').close(); render(); };
+$('#cfgForm').onsubmit = () => { saveCfg({ url: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() }); render(); }; // method=dialog 會自行關閉對話框；表單送出讓 Safari 有機會把網址＋金鑰存進 iCloud 鑰匙圈
 $('#cfgCopy').onclick = async () => { if (!cfg().token) return cfgMsg('這台裝置還沒設定，無法產生設定碼'); const c = setupCode(); try { await navigator.clipboard.writeText(c); cfgMsg('已複製設定碼'); } catch (e) { prompt('複製這串設定碼', c); } };
 $('#cfgPaste').onclick = async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { } if (!parseSetup(t)) t = prompt('貼上設定碼（lh1: 開頭）') || ''; const n = parseSetup(t); if (!n) return cfgMsg('這不是有效的設定碼'); saveCfg(n); $('#cfgDlg').close(); render(); };
 // 設定連結：網址後面加 #setup=設定碼（# 之後的內容不會送到伺服器），開啟時自動套用並從網址列移除
