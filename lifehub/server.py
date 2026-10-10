@@ -13,6 +13,7 @@ TOKEN_FILE = ROOT / "token.txt"
 if not TOKEN_FILE.exists():
     TOKEN_FILE.write_text(secrets.token_urlsafe(9))
 TOKEN = TOKEN_FILE.read_text().strip()
+HEALTH_KEYS = ["steps", "exercise_min", "active_kcal", "distance_km", "diet_kcal", "protein_g", "carbs_g", "fat_g", "water_ml", "sleep_h", "weight_kg"]
 
 def db():
     c = sqlite3.connect(DB)
@@ -73,7 +74,20 @@ class H(BaseHTTPRequestHandler):
         if self.path != "/api/sync": return self.send(404, {"error": "not found"})
         if not self.authed(): return self.send(401, {"error": "bad token"})
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-        _, seq = apply(body.get("changes", []))
+        changes = list(body.get("changes", []))
+        if body.get("kind") == "health":  # 與 cloud/Code.gs 的 healthChange_ 相同：同一天合併更新
+            import re
+            m = re.search(r"\d{4}-\d{2}-\d{2}", str(body.get("date", "")))
+            date = m.group(0) if m else time.strftime("%Y-%m-%d")
+            row = db().execute("SELECT data FROM records WHERE id=?", ("hk_" + date,)).fetchone()
+            data = json.loads(row[0]) if row else {}
+            data.update(date=date, src="apple-health")
+            for k in HEALTH_KEYS:
+                if body.get(k) not in (None, ""):
+                    try: data[k] = round(float(re.sub(r"[^0-9.\-]", "", str(body[k]))), 2)
+                    except ValueError: pass
+            changes.append({"id": "hk_" + date, "type": "health", "data": data, "updated_at": int(time.time() * 1000)})
+        _, seq = apply(changes)
         self.send(200, {"cursor": seq})
 
 if __name__ == "__main__":

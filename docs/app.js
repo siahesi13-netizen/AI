@@ -1,4 +1,4 @@
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -148,6 +148,12 @@ const iso = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0
 const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
 const weekDates = (off = 0) => { const d0 = new Date(weekStart() + 'T00:00:00'); return [0, 1, 2, 3, 4, 5, 6].map(i => { const d = new Date(d0); d.setDate(d0.getDate() + i + off * 7); return iso(d); }); };
 const WD = ['一', '二', '三', '四', '五', '六', '日'];
+// Apple 健康每日彙總（type 'health'，id hk_<日期>；由手機捷徑上傳到雲端，這裡只讀）
+const hk = d => { const r = DB['hk_' + d]; return r && !r.deleted ? r.data : null; };
+const hv = (d, k) => (hk(d) || {})[k] || 0;
+function hkNote() { const t = Math.max(0, ...Object.values(DB).filter(r => r.type === 'health' && !r.deleted).map(r => r.updated_at)); return `<p class="mut" style="margin:0 2px 12px">${t ? 'Apple 健康資料更新於 ' + new Date(t).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未收到 Apple 健康資料。在手機執行「上傳健康資料」捷徑後，數字會出現在這裡。'}</p>`; }
+const bars = (dates, vals) => { const mx = Math.max(1, ...vals); return `<div class="bars">${dates.map((d, i) => `<div class="${d === today() ? 'td' : ''}"><span>${vals[i] ? Math.round(vals[i]).toLocaleString() : ''}</span><i style="height:${vals[i] / mx * 72}%"></i><small>${WD[i]}</small></div>`).join('')}</div>`; };
+const num = (v, unit) => `<div class="big">${v ? (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString() : '–'}<small class="mut"> ${unit}</small></div>`;
 
 // ---------- 共用：分段切換 ----------
 window.setSub = (k, v) => { sub[k] = v; render(); };
@@ -217,19 +223,22 @@ function weekLog(dates) {
 window.fitAdd = () => { const m = +val('fm'); if (!m) return; put('workout', { date: val('fd') || today(), kind: val('fk'), min: m, km: +val('fkm') || 0, note: val('fn') }); render(); };
 window.fitGoal = () => { const g = prompt('每週運動目標（分鐘）', setting('goal', 150)); if (g) { setSetting('goal', +g); render(); } };
 function fitStats() {
-  const w = all('workout'), ws = weekStart(), wk = w.filter(x => x.date >= ws);
-  const days = new Set(w.map(x => x.date)); let streak = 0, d = new Date();
-  if (!days.has(today())) d.setDate(d.getDate() - 1);
-  while (days.has(new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10))) { streak++; d.setDate(d.getDate() - 1); }
-  return { w, min: wk.reduce((a, x) => a + x.min, 0), km: wk.reduce((a, x) => a + x.km, 0), n: wk.length, streak };
+  const w = all('workout'), dates = weekDates(), man = {}; w.forEach(x => man[x.date] = (man[x.date] || 0) + x.min);
+  const dayMin = d => Math.max(man[d] || 0, hv(d, 'exercise_min')); // 同一天手動與健康取較大者，避免重複計算
+  let streak = 0, d = new Date(); if (!dayMin(today())) d.setDate(d.getDate() - 1); while (dayMin(iso(d)) > 0) { streak++; d.setDate(d.getDate() - 1); }
+  const wk = w.filter(x => x.date >= dates[0] && x.date <= dates[6]);
+  return { w, dates, dayMin, min: Math.round(dates.reduce((a, x) => a + dayMin(x), 0)), km: wk.reduce((a, x) => a + x.km, 0), n: wk.length, streak };
 }
 function fit() {
-  const s = fitStats(), goal = setting('goal', 150), pct = Math.min(100, s.min / goal * 100);
-  return LATER('之後會串接手機 App（Apple 健康等）自動帶入，這裡先保留手動記錄。') + `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${pct}%"></i></div>
-  <div class="grid" style="margin-top:12px"><div><div class="big">${s.min}</div><div class="mut">分鐘</div></div><div><div class="big">${s.n}</div><div class="mut">次</div></div><div><div class="big">${s.km.toFixed(1)}</div><div class="mut">公里</div></div><div><div class="big">${s.streak}</div><div class="mut">連續天數</div></div></div></div>
-  <div class="card"><h2>新增運動</h2><div class="row"><input type="date" id="fd" value="${today()}"><select id="fk">${['跑步', '重訓', '游泳', '單車', '瑜珈', '走路', '球類', '其他'].map(k => `<option>${k}</option>`).join('')}</select></div>
-  <div class="row"><input id="fm" type="number" inputmode="numeric" placeholder="分鐘"><input id="fkm" type="number" inputmode="decimal" placeholder="公里（選填）"></div><input id="fn" placeholder="備註（選填）"><button class="b" onclick="fitAdd()">記錄</button></div>
-  <div class="card"><h2>最近紀錄</h2>${s.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30).map(x => `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min}分${x.km ? ' · ' + x.km + 'km' : ''} <span class="mut">${esc(x.note)}</span></span><button class="x" onclick="del('${x.id}')">✕</button></div>`).join('') || '<p class="mut">尚無記錄</p>'}</div>`;
+  const s = fitStats(), goal = setting('goal', 150), D = s.dates, t = today(), sum = k => D.reduce((a, d) => a + hv(d, k), 0), days = D.filter(d => hv(d, 'steps')).length;
+  return hkNote() + `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${Math.min(100, s.min / goal * 100)}%"></i></div>
+    <div class="grid" style="margin-top:12px"><div>${num(s.min, '分鐘')}<div class="mut">運動時間</div></div><div>${num(sum('active_kcal'), 'kcal')}<div class="mut">活動消耗</div></div><div>${num(days ? sum('steps') / days : 0, '步')}<div class="mut">日均步數</div></div><div>${num(s.streak, '天')}<div class="mut">連續運動</div></div></div></div>
+  <div class="card"><h2>每日運動分鐘</h2>${bars(D, D.map(s.dayMin))}</div>
+  <div class="card"><h2>今日</h2><div class="grid"><div>${num(hv(t, 'steps'), '步')}<div class="mut">步數</div></div><div>${num(s.dayMin(t), '分')}<div class="mut">運動時間</div></div><div>${num(hv(t, 'active_kcal'), 'kcal')}<div class="mut">活動消耗</div></div><div>${num(hv(t, 'distance_km'), 'km')}<div class="mut">步行＋跑步距離</div></div>${hv(t, 'sleep_h') ? `<div>${num(hv(t, 'sleep_h'), '小時')}<div class="mut">睡眠</div></div>` : ''}${hv(t, 'weight_kg') ? `<div>${num(hv(t, 'weight_kg'), 'kg')}<div class="mut">體重</div></div>` : ''}</div></div>
+  <div class="card"><h2>每日步數</h2>${bars(D, D.map(d => hv(d, 'steps')))}</div>
+  <details class="card"><summary style="cursor:pointer"><b class="serif">手動補記運動</b></summary><div class="row" style="margin-top:10px"><input type="date" id="fd" value="${today()}"><select id="fk">${['跑步', '重訓', '游泳', '單車', '瑜珈', '走路', '球類', '其他'].map(k => `<option>${k}</option>`).join('')}</select></div>
+  <div class="row"><input id="fm" type="number" inputmode="numeric" placeholder="分鐘"><input id="fkm" type="number" inputmode="decimal" placeholder="公里（選填）"></div><input id="fn" placeholder="備註（選填）"><button class="b" onclick="fitAdd()">記錄</button></details>
+  ${s.w.length ? `<div class="card"><h2>手動紀錄</h2>${s.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30).map(x => `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min}分${x.km ? ' · ' + x.km + 'km' : ''} <span class="mut">${esc(x.note)}</span></span><button class="x" onclick="del('${x.id}')">✕</button></div>`).join('')}</div>` : ''}`;
 }
 
 // ---------- 財務（家庭／個人兩本帳） ----------
@@ -287,14 +296,19 @@ window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, wat
 window.waterGoal = () => { const g = prompt('每日喝水目標（杯）', setting('water_goal', 8)); if (g) { setSetting('water_goal', +g); render(); } };
 window.mealAdd = () => { const t = val('mt'); if (!t) return; put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn') }); render(); };
 const LATER = t => `<p class="mut" style="margin:0 2px 12px">${t}</p>`;
+window.kcalGoal = () => { const g = prompt('每日攝取熱量目標（kcal）', setting('kcal_goal', 1800)); if (g) { setSetting('kcal_goal', +g); render(); } };
 function diet() {
-  const ms = all('meal').filter(m => m.date === ui.dd), wg = setting('water_goal', 8), c = cups(ui.dd), dates = weekDates(), logged = new Set(all('meal').map(m => m.date));
-  return LATER('之後會串接手機 App 自動帶入，這裡先保留手動記錄。') + `<div class="card"><div class="row"><input type="date" value="${ui.dd}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div>
-    <div class="eyebrow" style="margin-top:10px">喝水 <a class="wl" style="letter-spacing:0" onclick="waterGoal()">目標 ${wg} 杯</a></div>
-    <div class="hw" style="margin-top:6px">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>
-  <div class="card"><h2>記錄一餐</h2><div class="row"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div><input id="mn" placeholder="備註：份量、飽足感、心情（選填）"><button class="b" onclick="mealAdd()">記錄</button></div>
-  <div class="card"><h2>${ui.dd === today() ? '今日' : ui.dd} 飲食</h2>${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl}</div>` + l.map(m => `<div class="item"><span>${esc(m.text)} <span class="mut">${esc(m.note)}</span></span><button class="x" onclick="del('${m.id}')">✕</button></div>`).join('') : ''; }).join('') || '<p class="empty">這一天還沒有記錄</p>'}</div>
-  <div class="card week">${dates.map((d, i) => `<div class="${d === today() ? 'today' : ''}" onclick="dietDate('${d}')" style="cursor:pointer"><small>${WD[i]}</small><b>${+d.slice(8)}</b><i class="${logged.has(d) ? 'on' : ''}"></i></div>`).join('')}</div>`;
+  const d = ui.dd, ms = all('meal').filter(m => m.date === d), wg = setting('water_goal', 8), c = cups(d), dates = weekDates(), logged = new Set(all('meal').map(m => m.date));
+  const kg = setting('kcal_goal', 1800), kcal = hv(d, 'diet_kcal'), P = hv(d, 'protein_g'), C = hv(d, 'carbs_g'), F = hv(d, 'fat_g'), mk = P * 4 + C * 4 + F * 9, ml = hv(d, 'water_ml');
+  const macro = (n, g, k) => `<div style="display:flex;justify-content:space-between;margin-top:8px"><span>${n}</span><span class="mut">${g ? Math.round(g) + ' g · ' + Math.round(g * k / (mk || 1) * 100) + '%' : '–'}</span></div><div class="bar"><i style="width:${mk ? g * k / mk * 100 : 0}%"></i></div>`;
+  return hkNote() + `<div class="card"><div class="row"><input type="date" value="${d}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div></div>
+  <div class="card"><h2>攝取熱量 <a class="wl" onclick="kcalGoal()">目標 ${kg} kcal</a></h2>${num(kcal, 'kcal')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, kcal / kg * 100)}%;background:${kcal > kg ? 'var(--bad)' : 'var(--bar)'}"></i></div><div class="mut">${kcal ? (kcal > kg ? `超過目標 ${Math.round(kcal - kg)} kcal` : `還可以吃 ${Math.round(kg - kcal)} kcal`) : '這一天沒有健康資料'}${hv(d, 'active_kcal') ? ` · 活動消耗 ${Math.round(hv(d, 'active_kcal'))} kcal` : ''}</div></div>
+  <div class="card"><h2>三大營養素</h2>${macro('蛋白質', P, 4)}${macro('碳水化合物', C, 4)}${macro('脂肪', F, 9)}</div>
+  <div class="card"><h2>本週攝取熱量</h2>${bars(dates, dates.map(x => hv(x, 'diet_kcal')))}</div>
+  <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2>${ml ? `<div class="mut" style="margin-bottom:6px">Apple 健康：${Math.round(ml).toLocaleString()} ml</div>` : ''}
+    <div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">手動 ${c} / ${wg} 杯</div></div>
+  <details class="card"${ms.length ? ' open' : ''}><summary style="cursor:pointer"><b class="serif">手動記一餐</b></summary><div class="row" style="margin-top:10px"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div><input id="mn" placeholder="備註：份量、飽足感、心情（選填）"><button class="b" onclick="mealAdd()">記錄</button>
+    ${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl}</div>` + l.map(m => `<div class="item"><span>${esc(m.text)} <span class="mut">${esc(m.note)}</span></span><button class="x" onclick="del('${m.id}')">✕</button></div>`).join('') : ''; }).join('')}</details>`;
 }
 
 // ---------- 未來目標（人生／5・3・1 年／今年 ＋ 曼陀羅九宮格） ----------
@@ -419,8 +433,8 @@ function home() {
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
-  const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date)]);
+  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: hv(today(), 'diet_kcal') ? `今日 ${Math.round(hv(today(), 'diet_kcal'))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date), ...all('health').filter(x => x.exercise_min > 0).map(x => x.date)]);
   return `<div class="card hero full" data-b="hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
       ${cfg().token ? '' : `<br><span class="chip" onclick="$('#sync').click()">尚未同步 · 點此設定</span>`}</div><div class="hero-art">${HERO_ART}</div></div>

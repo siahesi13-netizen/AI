@@ -24,6 +24,15 @@ function doGet(e) {
   return out_({ cursor, changes });
 }
 
+// Apple 健康每日彙總（由 iOS 捷徑 POST：{ token, kind:"health", date:"yyyy-MM-dd", steps, exercise_min, … }）。同一天重送會合併更新，不會重複。
+const HEALTH_KEYS = ['steps', 'exercise_min', 'active_kcal', 'distance_km', 'diet_kcal', 'protein_g', 'carbs_g', 'fat_g', 'water_ml', 'sleep_h', 'weight_kg'];
+function healthChange_(body, all, index) {
+  const m = String(body.date || '').match(/\d{4}-\d{2}-\d{2}/), date = m ? m[0] : Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'), id = 'hk_' + date;
+  const data = Object.assign(index[id] !== undefined ? JSON.parse(all[index[id]][2] || '{}') : {}, { date: date, src: 'apple-health' });
+  HEALTH_KEYS.forEach(k => { if (body[k] === undefined || body[k] === null || body[k] === '') return; const n = Number(String(body[k]).replace(/[^0-9.\-]/g, '')); if (!isNaN(n)) data[k] = Math.round(n * 100) / 100; });
+  return { id: id, type: 'health', data: data, updated_at: Date.now() };
+}
+
 function doPost(e) {
   const body = JSON.parse(e.postData.contents || '{}');
   if (!authed_(body.token)) return out_({ error: 'bad token' });
@@ -32,14 +41,16 @@ function doPost(e) {
     const sh = sheet_(), all = rows_(sh), index = {};
     all.forEach((r, i) => index[r[0]] = i);
     let seq = all.reduce((m, r) => Math.max(m, r[5]), 0);
-    for (const ch of body.changes || []) {
+    const changes = (body.changes || []).slice();
+    if (body.kind === 'health') changes.push(healthChange_(body, all, index));
+    for (const ch of changes) {
       const i = index[ch.id];
       if (i !== undefined && all[i][3] >= ch.updated_at) continue; // last-write-wins
       const row = [ch.id, ch.type, JSON.stringify(ch.data || {}), ch.updated_at, !!ch.deleted, ++seq];
       if (i !== undefined) { sh.getRange(i + 2, 1, 1, 6).setValues([row]); all[i] = row; }
       else { sh.appendRow(row); index[ch.id] = all.push(row) - 1; }
     }
-    return out_({ cursor: seq });
+    return out_({ ok: true, cursor: seq });
   } finally { lock.releaseLock(); }
 }
 

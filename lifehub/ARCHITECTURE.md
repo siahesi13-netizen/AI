@@ -42,3 +42,6 @@ type：`bullet` `workout` `txn` `note` `book` `setting`。
 3. `metric` type + 運動頁步數/體重趨勢
 4. `ingest/health` + 捷徑說明
 5. OtterLife 匯入
+
+## Apple 健康（v1.10.0 已實作）
+採「iOS 捷徑每日 POST 彙總」方案。記錄型別 `health`，id `hk_<日期>`，欄位見 `cloud/HEALTH_SHORTCUT.md`。OtterLife 無公開 API／匯出，其資料來源即 Apple 健康；飲食需由會寫入健康的 App（如 FatSecret）提供。
