@@ -13,7 +13,7 @@ TOKEN_FILE = ROOT / "token.txt"
 if not TOKEN_FILE.exists():
     TOKEN_FILE.write_text(secrets.token_urlsafe(9))
 TOKEN = TOKEN_FILE.read_text().strip()
-HEALTH_KEYS = ["steps", "exercise_min", "active_kcal", "distance_km", "diet_kcal", "protein_g", "carbs_g", "fat_g", "water_ml", "sleep_h", "weight_kg"]
+HEALTH_KEYS = ["steps", "exercise_min", "active_kcal", "distance_km", "diet_kcal", "protein_g", "carbs_g", "fat_g", "water_ml", "sleep_h", "weight_kg", "cycle_km", "cycle_speed", "cycle_cadence", "cycle_power"]
 
 def db():
     c = sqlite3.connect(DB)
