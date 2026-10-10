@@ -84,8 +84,8 @@ class H(BaseHTTPRequestHandler):
             data.update(date=date, src="apple-health")
             for k in HEALTH_KEYS:
                 if body.get(k) not in (None, ""):
-                    try: data[k] = round(float(re.sub(r"[^0-9.\-]", "", str(body[k]))), 2)
-                    except ValueError: pass
+                    nums = re.findall(r"-?\d+(?:\.\d+)?", re.sub(r"(\d),(?=\d{3}(\D|$))", r"\1", str(body[k])))
+                    if nums: data[k] = round(sum(float(x) for x in nums), 2)  # 多行值（如 738 與補位的 0）要相加，不可相接
             changes.append({"id": "hk_" + date, "type": "health", "data": data, "updated_at": int(time.time() * 1000)})
         _, seq = apply(changes)
         self.send(200, {"cursor": seq})
