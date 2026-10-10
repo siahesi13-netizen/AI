@@ -1,6 +1,10 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [後端] - 2026-10-10
+- 健康上傳入口：鍵名不分大小寫、支援別名、金鑰自動去空白；金鑰錯誤時回傳診斷（欄位名稱與長度）。Apps Script 第 4 版
+- 首次實機上傳成功（步數）
+
 ## [1.10.1] - 2026-10-10
 - 點同步圓點：尚未設定的裝置會先讀剪貼簿，有設定碼就直接套用（搭配 Apple 通用剪貼簿，iPhone 複製、iPad 點一下）
 - 同步設定改為表單，讓 Safari／iCloud 鑰匙圈可以儲存並自動填入

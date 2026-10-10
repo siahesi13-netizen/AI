@@ -12,7 +12,7 @@ function sheet_() {
   return sh;
 }
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
-function authed_(t) { const k = PropertiesService.getScriptProperties().getProperty('TOKEN'); return k && t === k; }
+function authed_(t) { const k = PropertiesService.getScriptProperties().getProperty('TOKEN'); return !!k && String(t === undefined || t === null ? '' : t).trim() === String(k).trim(); }
 function rows_(sh) { const n = sh.getLastRow(); return n < 2 ? [] : sh.getRange(2, 1, n - 1, 6).getValues(); }
 
 function doGet(e) {
@@ -33,9 +33,15 @@ function healthChange_(body, all, index) {
   return { id: id, type: 'health', data: data, updated_at: Date.now() };
 }
 
+// 捷徑手動輸入的鍵名容易大小寫不一或多空白：統一成小寫、去掉空白與底線以外的差異；並支援較好打的別名
+const ALIAS = { exercise: 'exercise_min', exercisemin: 'exercise_min', active: 'active_kcal', activekcal: 'active_kcal', distance: 'distance_km', distancekm: 'distance_km', kcal: 'diet_kcal', diet: 'diet_kcal', dietkcal: 'diet_kcal', protein: 'protein_g', proteing: 'protein_g', carbs: 'carbs_g', carbsg: 'carbs_g', fat: 'fat_g', fatg: 'fat_g', water: 'water_ml', waterml: 'water_ml', sleep: 'sleep_h', sleeph: 'sleep_h', weight: 'weight_kg', weightkg: 'weight_kg' };
+function normBody_(raw) { const o = {}; Object.keys(raw || {}).forEach(k => { const n = String(k).trim().toLowerCase(); o[ALIAS[n.replace(/_/g, '')] || n] = raw[k]; }); if (typeof o.kind === 'string') o.kind = o.kind.trim().toLowerCase(); return o; }
+
 function doPost(e) {
-  const body = JSON.parse(e.postData.contents || '{}');
-  if (!authed_(body.token)) return out_({ error: 'bad token' });
+  let raw = {}; try { raw = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return out_({ error: 'bad json' }); }
+  const body = normBody_(raw);
+  // 診斷資訊只含欄位名稱與金鑰長度，不含金鑰內容
+  if (!authed_(body.token)) return out_({ error: 'bad token', hint: { keys: Object.keys(raw), tokenType: typeof body.token, tokenLength: body.token === undefined || body.token === null ? 0 : String(body.token).length, expectedLength: String(PropertiesService.getScriptProperties().getProperty('TOKEN') || '').trim().length } });
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sh = sheet_(), all = rows_(sh), index = {};
