@@ -25,7 +25,7 @@ function doGet(e) {
 }
 
 // Apple 健康每日彙總（由 iOS 捷徑 POST：{ token, kind:"health", date:"yyyy-MM-dd", steps, exercise_min, … }）。同一天重送會合併更新，不會重複。
-const HEALTH_KEYS = ['steps', 'exercise_min', 'active_kcal', 'distance_km', 'diet_kcal', 'protein_g', 'carbs_g', 'fat_g', 'water_ml', 'sleep_h', 'weight_kg'];
+const HEALTH_KEYS = ['steps', 'exercise_min', 'active_kcal', 'distance_km', 'diet_kcal', 'protein_g', 'carbs_g', 'fat_g', 'water_ml', 'sleep_h', 'weight_kg', 'cycle_km', 'cycle_speed', 'cycle_cadence', 'cycle_power'];
 // 捷徑傳來的值可能是多行（例如「738」＋補位的「0」）、帶單位或千分位：逐一取出數字後相加，不可把數字直接接在一起
 function numSum_(v) { const m = String(v).replace(/(\d),(?=\d{3}(\D|$))/g, '$1').match(/-?\d+(\.\d+)?/g); return m ? m.reduce((a, x) => a + Number(x), 0) : null; }
 function healthChange_(body, all, index) {
@@ -36,7 +36,7 @@ function healthChange_(body, all, index) {
 }
 
 // 捷徑手動輸入的鍵名容易大小寫不一或多空白：統一成小寫、去掉空白與底線以外的差異；並支援較好打的別名
-const ALIAS = { exercise: 'exercise_min', exercisemin: 'exercise_min', active: 'active_kcal', activekcal: 'active_kcal', distance: 'distance_km', distancekm: 'distance_km', kcal: 'diet_kcal', diet: 'diet_kcal', dietkcal: 'diet_kcal', protein: 'protein_g', proteing: 'protein_g', carbs: 'carbs_g', carbsg: 'carbs_g', fat: 'fat_g', fatg: 'fat_g', water: 'water_ml', waterml: 'water_ml', sleep: 'sleep_h', sleeph: 'sleep_h', weight: 'weight_kg', weightkg: 'weight_kg' };
+const ALIAS = { exercise: 'exercise_min', exercisemin: 'exercise_min', active: 'active_kcal', activekcal: 'active_kcal', distance: 'distance_km', distancekm: 'distance_km', kcal: 'diet_kcal', diet: 'diet_kcal', dietkcal: 'diet_kcal', protein: 'protein_g', proteing: 'protein_g', carbs: 'carbs_g', carbsg: 'carbs_g', fat: 'fat_g', fatg: 'fat_g', water: 'water_ml', waterml: 'water_ml', sleep: 'sleep_h', sleeph: 'sleep_h', weight: 'weight_kg', weightkg: 'weight_kg', cycle: 'cycle_km', cyclekm: 'cycle_km', bike: 'cycle_km', cyclespeed: 'cycle_speed', speed: 'cycle_speed', cyclecadence: 'cycle_cadence', cadence: 'cycle_cadence', cyclepower: 'cycle_power', power: 'cycle_power' };
 function normBody_(raw) { const o = {}; Object.keys(raw || {}).forEach(k => { const n = String(k).trim().toLowerCase(); o[ALIAS[n.replace(/_/g, '')] || n] = raw[k]; }); if (typeof o.kind === 'string') o.kind = o.kind.trim().toLowerCase(); return o; }
 
 function doPost(e) {
