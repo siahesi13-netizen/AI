@@ -51,6 +51,8 @@ function doPost(e) {
     let seq = all.reduce((m, r) => Math.max(m, r[5]), 0);
     const changes = (body.changes || []).slice();
     if (body.kind === 'health') changes.push(healthChange_(body, all, index));
+    // 原樣記錄（除金鑰外）：用來查看捷徑實際送出的內容，再決定如何解析
+    if (body.kind === 'debug') { const d = {}; Object.keys(raw).forEach(k => { if (String(k).trim().toLowerCase() !== 'token') d[k] = raw[k]; }); changes.push({ id: 'debug_' + Date.now(), type: 'debug', data: d, updated_at: Date.now() }); }
     for (const ch of changes) {
       const i = index[ch.id];
       if (i !== undefined && all[i][3] >= ch.updated_at) continue; // last-write-wins
