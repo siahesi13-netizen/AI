@@ -26,10 +26,12 @@ function doGet(e) {
 
 // Apple 健康每日彙總（由 iOS 捷徑 POST：{ token, kind:"health", date:"yyyy-MM-dd", steps, exercise_min, … }）。同一天重送會合併更新，不會重複。
 const HEALTH_KEYS = ['steps', 'exercise_min', 'active_kcal', 'distance_km', 'diet_kcal', 'protein_g', 'carbs_g', 'fat_g', 'water_ml', 'sleep_h', 'weight_kg'];
+// 捷徑傳來的值可能是多行（例如「738」＋補位的「0」）、帶單位或千分位：逐一取出數字後相加，不可把數字直接接在一起
+function numSum_(v) { const m = String(v).replace(/(\d),(?=\d{3}(\D|$))/g, '$1').match(/-?\d+(\.\d+)?/g); return m ? m.reduce((a, x) => a + Number(x), 0) : null; }
 function healthChange_(body, all, index) {
   const m = String(body.date || '').match(/\d{4}-\d{2}-\d{2}/), date = m ? m[0] : Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'), id = 'hk_' + date;
   const data = Object.assign(index[id] !== undefined ? JSON.parse(all[index[id]][2] || '{}') : {}, { date: date, src: 'apple-health' });
-  HEALTH_KEYS.forEach(k => { if (body[k] === undefined || body[k] === null || body[k] === '') return; const n = Number(String(body[k]).replace(/[^0-9.\-]/g, '')); if (!isNaN(n)) data[k] = Math.round(n * 100) / 100; });
+  HEALTH_KEYS.forEach(k => { if (body[k] === undefined || body[k] === null || body[k] === '') return; const n = numSum_(body[k]); if (n !== null) data[k] = Math.round(n * 100) / 100; });
   return { id: id, type: 'health', data: data, updated_at: Date.now() };
 }
 
