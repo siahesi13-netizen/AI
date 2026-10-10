@@ -1,6 +1,10 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.9.0] - 2026-10-10
+- 同步設定改為對話框，新增「設定碼」：把網址＋金鑰合成一串，可複製／貼上
+- 支援設定連結：網址加 `#setup=設定碼` 開啟即自動套用（供 iOS 捷徑使用），套用後從網址列移除
+
 ## [1.8.1] - 2026-10-04
 - 新的 App 圖示（暖米底＋拱形、圓、半圓色塊，與站內配色一致），提供 iOS／Android 用的 PNG
 - 主畫面名稱改為「Eilis」；完整名稱 Eilis’ Personal Dashboard

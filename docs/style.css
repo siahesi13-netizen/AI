@@ -104,3 +104,6 @@ nav button.on{color:var(--tx);font-weight:700}nav button.on .ic{color:var(--coco
 .grip-h{padding:4px 12px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-left:1px solid rgba(128,128,128,.4);border-right:1px solid rgba(128,128,128,.4)}
 .editbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:14px;font-size:12.5px;color:var(--mut)}
 .editbar button{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 12px;font:inherit;color:var(--tx);cursor:pointer;margin-left:6px}
+
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--tx);padding:18px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(40,30,20,.25)}
+dialog::backdrop{background:rgba(40,30,20,.35)}

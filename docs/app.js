@@ -1,4 +1,4 @@
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.9.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -53,13 +53,26 @@ async function sync() {
     dot.className = 'err'; dot.title = e === 401 ? '金鑰錯誤，點擊重設' : '離線，稍後自動重試';
   } finally { syncing = false; }
 }
-$('#sync').onclick = () => {
-  const c = cfg();
-  const url = prompt('雲端同步網址（Apps Script 部署網址；用本機伺服器請留空）', c.url || ''); if (url === null) return;
-  const token = prompt('同步金鑰', c.token || ''); if (token === null) return;
-  if (url.trim() !== (c.url || '')) { cursor = 0; } // 換後端要重新拉取全部
-  LS('lh_cfg', { url: url.trim(), token: token.trim() }); persist(); sync();
-};
+// ---------- 同步設定：網址＋金鑰可合成一組「設定碼」，方便用捷徑或貼上一次完成 ----------
+const b64e = t => btoa(unescape(encodeURIComponent(t))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64d = t => decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_/g, '/'))));
+const setupCode = () => 'lh1:' + b64e(JSON.stringify({ u: cfg().url || '', t: cfg().token || '' }));
+function parseSetup(code) { try { const m = String(code).trim().match(/lh1:([A-Za-z0-9_-]+)/); if (!m) return null; const o = JSON.parse(b64d(m[1])); return typeof o.t === 'string' && o.t ? { url: o.u || '', token: o.t } : null; } catch (e) { return null; } }
+function saveCfg(n) { if (n.url !== (cfg().url || '')) cursor = 0; LS('lh_cfg', n); persist(); sync(); } // 換後端要重新拉取全部
+document.body.insertAdjacentHTML('beforeend', `<dialog id="cfgDlg"><h2>同步設定</h2>
+  <div class="eyebrow">同步網址</div><input id="cfgUrl" placeholder="Apps Script 部署網址（用本機伺服器請留空）" autocapitalize="off" autocorrect="off">
+  <div class="eyebrow" style="margin-top:6px">金鑰</div><input id="cfgTok" type="password" autocomplete="off">
+  <div class="row"><button class="b" id="cfgSave">儲存</button><button class="b g" id="cfgClose">關閉</button></div>
+  <div class="eyebrow" style="margin-top:14px">設定碼</div><p class="mut" style="margin:2px 0 6px">把網址和金鑰合成一串。在已設定好的裝置按「複製」，到新裝置按「貼上」。設定碼等同金鑰，請勿外流。</p>
+  <div class="row"><button class="b g" id="cfgPaste">貼上設定碼</button><button class="b g" id="cfgCopy">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p></dialog>`);
+const cfgMsg = t => { $('#cfgMsg').textContent = t; };
+$('#sync').onclick = () => { $('#cfgUrl').value = cfg().url || ''; $('#cfgTok').value = cfg().token || ''; cfgMsg(''); $('#cfgDlg').showModal(); };
+$('#cfgClose').onclick = () => $('#cfgDlg').close();
+$('#cfgSave').onclick = () => { saveCfg({ url: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() }); $('#cfgDlg').close(); render(); };
+$('#cfgCopy').onclick = async () => { if (!cfg().token) return cfgMsg('這台裝置還沒設定，無法產生設定碼'); const c = setupCode(); try { await navigator.clipboard.writeText(c); cfgMsg('已複製設定碼'); } catch (e) { prompt('複製這串設定碼', c); } };
+$('#cfgPaste').onclick = async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { } if (!parseSetup(t)) t = prompt('貼上設定碼（lh1: 開頭）') || ''; const n = parseSetup(t); if (!n) return cfgMsg('這不是有效的設定碼'); saveCfg(n); $('#cfgDlg').close(); render(); };
+// 設定連結：網址後面加 #setup=設定碼（# 之後的內容不會送到伺服器），開啟時自動套用並從網址列移除
+(() => { const m = location.hash.match(/^#setup=(.+)$/); if (!m) return; history.replaceState(null, '', location.pathname + location.search); const n = parseSetup(decodeURIComponent(m[1])); if (n) { LS('lh_cfg', n); cursor = 0; persist(); setTimeout(() => { sync(); alert('已套用同步設定'); }, 300); } })();
 const IC = p => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 // 外觀：預設淺色，不跟隨系統；右上角按鈕切換（每台裝置各自記住）
 const SUN = IC('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'), MOON = IC('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>');
