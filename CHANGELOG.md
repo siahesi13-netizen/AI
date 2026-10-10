@@ -1,6 +1,10 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.10.1] - 2026-10-10
+- 點同步圓點：尚未設定的裝置會先讀剪貼簿，有設定碼就直接套用（搭配 Apple 通用剪貼簿，iPhone 複製、iPad 點一下）
+- 同步設定改為表單，讓 Safari／iCloud 鑰匙圈可以儲存並自動填入
+
 ## [1.10.0] - 2026-10-10
 - 串接 Apple 健康：後端新增每日健康彙總入口（由 iOS 捷徑上傳，同日合併、不重複）；捷徑建立步驟見 lifehub/cloud/HEALTH_SHORTCUT.md
 - 運動管理：本週運動時間／活動消耗／日均步數／連續天數、每日運動分鐘與步數長條圖、今日數據；手動記錄改為補記（同日與健康取較大者）
