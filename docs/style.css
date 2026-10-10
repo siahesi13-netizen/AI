@@ -107,3 +107,9 @@ nav button.on{color:var(--tx);font-weight:700}nav button.on .ic{color:var(--coco
 
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--tx);padding:18px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(40,30,20,.25)}
 dialog::backdrop{background:rgba(40,30,20,.35)}
+
+/* 一週長條圖 */
+.bars{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:128px;margin-top:4px}
+.bars div{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:10.5px;color:var(--mut);min-width:0}
+.bars span{margin-bottom:3px;white-space:nowrap}.bars small{margin-top:5px;font-size:10.5px}
+.bars i{display:block;width:62%;max-width:28px;background:var(--clay);border-radius:5px 5px 2px 2px;min-height:2px}.bars .td i{background:var(--cocoa)}.bars .td small{color:var(--tx);font-weight:700}
