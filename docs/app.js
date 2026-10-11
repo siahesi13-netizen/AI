@@ -1,4 +1,4 @@
-const APP_VERSION = '1.24.4';
+const APP_VERSION = '1.24.5';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -333,6 +333,8 @@ window.finPick = () => finMonth(pKey($('#finPick_y').value, $('#finPick_m').valu
 // ---------- 公司代墊（個人財務的分頁）：分類名稱含「代墊」的帳。支出＝我先墊的錢，收入＝公司回款 ----------
 // 手上應有的代墊款＝起算日以來（公司撥款與回款 − 代墊支出）＋手動調整。手動調整用來補記帳檔裡沒有的收付（例如同事直接匯還）
 window.advAdjAdd = () => { const a = prompt('調整金額（收到錢填正數，付出去填負數）'); if (a === null || !+a) return; const n = prompt('說明（例：同事匯還某筆代墊）', ''); if (n === null) return; const d = prompt('日期（yyyy-mm-dd）', today()); if (d === null) return; setSetting('advadj', [...setting('advadj', []), { amount: +a, note: n.trim(), date: /^\d{4}-\d{2}-\d{2}$/.test(d.trim()) ? d.trim() : today() }]); render(); };
+// 實際點到的金額：拿來和帳面應有的金額比，差額就是還沒記帳的收付
+window.advActual = () => { const c = setting('advactual', null), a = prompt('你實際手上的代墊款金額（清空表示不比對）', c ? c.amount : ''); if (a === null) return; if (!a.trim()) { setSetting('advactual', null); return render(); } setSetting('advactual', { amount: +a || 0, date: today() }); render(); };
 window.advAdjDel = i => { if (!confirm('刪除這筆調整？')) return; setSetting('advadj', setting('advadj', []).filter((_, k) => k !== i)); render(); };
 window.advStart = () => { const d = prompt('代墊從哪一天開始算（yyyy-mm-dd；清空表示全部都算）', setting('advstart', '')); if (d === null) return; const v = d.trim(); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return alert('日期格式請用 yyyy-mm-dd'); setSetting('advstart', v); render(); };
 window.advPick = () => { ui.am = pKey($('#advPick_y').value, $('#advPick_m').value); render(); };
@@ -342,13 +344,14 @@ function advView() {
   const ADJ = setting('advadj', []).map((x, i) => ({ ...x, i })).filter(x => !start || x.date >= start), adj = ADJ.reduce((a, x) => a + x.amount, 0), lastDate = A.reduce((m, x) => x.date > m ? x.date : m, ''), sg = v => (v >= 0 ? '+' : '-') + money(Math.abs(v));
   const ms = key === 'all' ? years.slice().reverse() : [...new Set(T.map(x => month(x.date)))].sort(), grp = k => A.filter(x => x.date.startsWith(k));
   const allOut = sum(A, 'out'), allBack = sum(A, 'in'), noNote = T.filter(x => x.type === 'out' && !x.note).length;
-  const hand = allBack - allOut + adj;
+  const hand = allBack - allOut + adj, act = setting('advactual', null);
   return `<div class="card" data-b="hand"><div class="eyebrow">目前手上應有的代墊款</div><div class="big ${hand < 0 ? 'bad' : ''}">${money(hand)}</div>
   <p class="mut" style="margin:6px 0 8px">${hand >= 0 ? '公司給你的錢比你墊出去的多，這是你手上應該還留著的金額。' : '你墊出去的比公司給的多，這是公司還欠你的金額。'}記帳資料到 ${esc(lastDate || '—')}，之後的收付還沒算進來。</p>
   <div class="item"><span>公司撥款與回款 <span class="mut">${start ? `自 ${esc(start)} 起` : '全部'}</span></span><b class="ok">+${money(allBack)}</b></div>
   <div class="item"><span>代墊支出</span><b class="bad">-${money(allOut)}</b></div>
   ${ADJ.map(x => `<div class="item"><span>調整：${esc(x.note || '未註明')} <span class="mut">${esc(x.date)}</span></span><span><b class="${x.amount >= 0 ? 'ok' : 'bad'}">${sg(x.amount)}</b><button class="x" onclick="advAdjDel(${x.i})">✕</button></span></div>`).join('')}
-  <p class="mut" style="margin:8px 0 0"><a class="wl" onclick="advAdjAdd()">新增調整</a>（記帳檔沒記到的收付，例如同事直接匯還）</p></div>
+  ${act ? `<div class="item"><span>實際手上 <span class="mut">${esc(act.date)} 點的</span></span><b>${money(act.amount)}</b></div><p style="margin:8px 0 0">${Math.abs(hand - act.amount) < 1 ? '帳面與實際相符。' : hand > act.amount ? `帳面比實際多 <b class="bad">${money(hand - act.amount)}</b>，這是 ${esc(lastDate)} 之後已經墊出去、但還沒記帳的金額（或漏記的支出）。` : `實際比帳面多 <b class="ok">${money(act.amount - hand)}</b>，可能有回款或撥款還沒記帳。`}</p>` : ''}
+  <p class="mut" style="margin:8px 0 0"><a class="wl" onclick="advAdjAdd()">新增調整</a>（記帳檔沒記到的收付，例如同事直接匯還）・<a class="wl" onclick="advActual()">${act ? '更新實際金額' : '填入實際手上金額來比對'}</a></p></div>
   <div class="card" data-b="sum">${pSelect(key, years, 'advPick')}
   <div class="grid" style="margin-top:10px"><div><div class="eyebrow">${pLabel(key)}代墊支出</div><div class="big bad">${money(out)}</div></div><div><div class="eyebrow">公司回款</div><div class="big ok">${money(back)}</div></div></div>
   <p style="margin:10px 0 0">${out - back > 0 ? `這段期間還有 <b class="bad">${money(out - back)}</b> 沒回來` : out - back < 0 ? `這段期間回款比支出多 <b class="ok">${money(back - out)}</b>（含之前墊的）` : '這段期間支出與回款相等'}</p>
