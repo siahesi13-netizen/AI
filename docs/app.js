@@ -1,4 +1,4 @@
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.21.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -346,7 +346,6 @@ function fin() {
 }
 
 // ---------- 投資（個人財務的分頁）：投入金額來自記帳裡「投資」分類；持有部位與市值手動維護 ----------
-window.invAdd = () => { const n = val('iv_n'); if (!n) return; put('holding', { name: n, kind: val('iv_k'), cost: +val('iv_c') || 0, value: +val('iv_v') || 0, at: today() }); render(); };
 window.invEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, k === 'name' || k === 'kind' ? { [k]: v.trim() } : { [k]: +v || 0, at: today() }); render(); };
 // 觀察清單：想研究或考慮買的標的，記下理由與消息來源，之後回頭對照
 const W_SRC = ['自己研究', '朋友或聽到的消息', '新聞媒體', '書或課程', '其他'], W_ST = [['watch', '觀察中'], ['bought', '已買'], ['drop', '放棄']];
@@ -370,9 +369,8 @@ function invest() {
   ${H.length ? `<p style="margin:10px 0 0">成本 <b>${money(cost)}</b>・未實現損益 <b class="${value - cost >= 0 ? 'ok' : 'bad'}">${value - cost >= 0 ? '+' : ''}${money(value - cost)}</b>${cost ? `（${((value - cost) / cost * 100).toFixed(1)}%）` : ''}</p>` : ''}
   <p class="mut" style="margin:6px 0 0">近 12 個月有 ${n} 個月投入${n ? `，平均每次 ${money(per.reduce((a, x) => a + x, 0) / n)}` : ''}。投入金額取自「收支」裡分類為「投資」的帳目。</p></div>
   <div class="card" data-b="trend"><h2>每月投入</h2><div class="bars" style="grid-template-columns:repeat(12,1fr)">${ms.map((k, i) => `<div class="${k === month(today()) ? 'td' : ''}"><span>${per[i] ? Math.round(per[i] / 1000) + 'k' : ''}</span><i style="height:${per[i] / mx * 72}%"></i><small>${+k.slice(5)}</small></div>`).join('')}</div></div>
-  <div class="card" data-b="hold"><h2>持有部位</h2>${H.map(x => `<div class="item"><span><a class="wl" onclick="invEdit('${x.id}','name','名稱')">${esc(x.name)}</a> <span class="mut">${esc(x.kind || '')}・成本 <a class="wl" onclick="invEdit('${x.id}','cost','成本')">${money(x.cost)}</a>・${esc(x.at || '')}</span></span><span><a class="wl" onclick="invEdit('${x.id}','value','目前市值')"><b>${money(x.value)}</b></a> <span class="${x.value - x.cost >= 0 ? 'ok' : 'bad'}" style="font-size:12.5px">${x.cost ? ((x.value - x.cost) / x.cost * 100).toFixed(1) + '%' : ''}</span><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">還沒有持有部位。在下面新增（例如某檔 ETF、基金、存股），之後點市值就能更新。</p>'}
+  <div class="card" data-b="hold"><h2>持有部位</h2>${H.map(x => `<div class="item"><span><a class="wl" onclick="invEdit('${x.id}','name','名稱')">${esc(x.name)}</a> <span class="mut">${esc(x.kind || '')}・成本 <a class="wl" onclick="invEdit('${x.id}','cost','成本')">${money(x.cost)}</a>・${esc(x.at || '')}</span></span><span><a class="wl" onclick="invEdit('${x.id}','value','目前市值')"><b>${money(x.value)}</b></a> <span class="${x.value - x.cost >= 0 ? 'ok' : 'bad'}" style="font-size:12.5px">${x.cost ? ((x.value - x.cost) / x.cost * 100).toFixed(1) + '%' : ''}</span><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">還沒有持有部位。</p>'}
   ${H.length && value > 0 ? `<div style="margin-top:10px">${H.map(x => `<div class="mut">${esc(x.name)}（${pct(x.value, value)}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.min(100, x.value / value * 100)}%"></i></div>`).join('')}</div>` : ''}</div>
-  <div class="card" data-b="add"><h2>新增持有部位</h2><div class="row"><input id="iv_n" placeholder="名稱（例：0050）"><input id="iv_k" placeholder="類型（例：ETF、基金、股票）"></div><div class="row"><input id="iv_c" type="number" inputmode="decimal" placeholder="累計成本"><input id="iv_v" type="number" inputmode="decimal" placeholder="目前市值"></div><button class="b" onclick="invAdd()">新增</button></div>
   ${watchCard()}
   <div class="card" data-b="list"><h2>投入紀錄</h2>${T.map(x => `<div class="item"><span>${x.date} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><b>${money(x.amount)}</b></div>`).join('') || '<p class="empty">記帳裡還沒有「投資」分類的帳目</p>'}</div>
   <p class="mut" style="margin:0 2px 12px">這頁只做整理與計算，不提供投資建議。</p>`;
