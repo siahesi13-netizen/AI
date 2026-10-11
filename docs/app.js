@@ -1,4 +1,4 @@
-const APP_VERSION = '1.10.1';
+const APP_VERSION = '1.11.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -114,7 +114,7 @@ function render() {
 
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
 const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : '');
-const GRIP = '<div class="grip"><button onclick="blkMove(this,-1)" aria-label="往前移">↑</button><span class="grip-h" title="按住拖曳">⠿ 拖曳</span><button onclick="blkMove(this,1)" aria-label="往後移">↓</button></div>';
+const GRIP = '<div class="grip"><span class="grip-h" title="按住拖曳可移動這個區塊" aria-label="拖曳移動區塊">⠿</span><button onclick="blkMove(this,-1)" aria-label="往前移">↑</button><button onclick="blkMove(this,1)" aria-label="往後移">↓</button></div>';
 function applyLayout() {
   const v = $('#view'), seen = {}, blocks = []; v.classList.toggle('two', tab === 'home'); document.body.classList.toggle('editing', !!ui.edit); $('#layoutBtn').classList.toggle('on', !!ui.edit);
   [...v.children].forEach((el, i) => {
@@ -122,11 +122,11 @@ function applyLayout() {
     let k = el.dataset.b || ((el.querySelector('h2, summary, .eyebrow') || {}).textContent || (el.querySelector('input') || {}).placeholder || el.className || el.tagName).replace(/[\d\s（）()／/·\-–:：]/g, '').slice(0, 16) || 'blk';
     if (seen[k]) k += '#' + seen[k]; seen[k.split('#')[0]] = (seen[k.split('#')[0]] || 0) + 1;
     const w = document.createElement('div'); w.className = 'blk' + (el.classList.contains('full') ? ' full' : ''); w.dataset.b = k; el.removeAttribute('data-b');
-    v.insertBefore(w, el); w.appendChild(el); if (ui.edit) w.insertAdjacentHTML('afterbegin', GRIP); blocks.push(w);
+    v.insertBefore(w, el); w.appendChild(el); w.insertAdjacentHTML('afterbegin', GRIP); blocks.push(w); // 拖曳點常駐在每個區塊左上角
   });
   const order = setting('layout_' + pageKey(), []);
   if (order.length) blocks.map((b, i) => [order.indexOf(b.dataset.b) < 0 ? 1e3 + i : order.indexOf(b.dataset.b), b]).sort((a, b) => a[0] - b[0]).forEach(([, b]) => v.appendChild(b));
-  if (ui.edit) v.insertAdjacentHTML('afterbegin', `<div class="editbar full"><span>版面編輯中：按住「⠿ 拖曳」移動區塊，或用 ↑ ↓</span><span><button onclick="layoutReset()">恢復預設</button><button onclick="layoutEdit()">完成</button></span></div>`);
+  if (ui.edit) v.insertAdjacentHTML('afterbegin', `<div class="editbar full"><span>按住區塊左上角的 ⠿ 可隨時拖曳；這裡另外提供 ↑ ↓ 與恢復預設</span><span><button onclick="layoutReset()">恢復預設</button><button onclick="layoutEdit()">完成</button></span></div>`);
 }
 const saveLayout = () => setSetting('layout_' + pageKey(), [...document.querySelectorAll('#view > .blk')].map(b => b.dataset.b));
 window.layoutEdit = () => { ui.edit = !ui.edit; render(); };
@@ -172,7 +172,11 @@ window.todoToggle = id => { const d = DB[id].data; patch(id, { done: !d.done, do
 window.todoStar = id => { patch(id, { star: !DB[id].data.star }); render(); };
 const todoSort = (a, b) => (b.star - a.star) || (a.due || '9999').localeCompare(b.due || '9999') || (a.created - b.created);
 const todosOpen = () => all('todo').filter(t => !t.done).sort(todoSort);
-const todoRow = t => `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${t.done ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="todoToggle('${t.id}')"></i><span style="${t.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(t.text)}${t.due ? ` <span class="mut ${t.due < today() && !t.done ? 'bad' : ''}">${t.due === today() ? '今天' : t.due.slice(5)}</span>` : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" style="${t.star ? 'color:var(--bar)' : ''}" onclick="todoStar('${t.id}')" aria-label="重要">${t.star ? '★' : '☆'}</button><button class="x" onclick="del('${t.id}')" aria-label="刪除">✕</button></span></div>`;
+window.todoEdit = id => { ui.editTodo = id; render(); setTimeout(() => $('#te_t') && $('#te_t').focus()); };
+window.todoSave = id => { const t = val('te_t'); if (!t) return; patch(id, { text: t, list: val('te_l') || '雜事', due: val('te_d') }); ui.editTodo = null; render(); };
+const todoRow = t => ui.editTodo === t.id
+  ? `<div class="item" style="display:block"><input id="te_t" value="${esc(t.text)}" onkeydown="event.key==='Enter'&&todoSave('${t.id}')"><div class="row"><input id="te_l" list="tls" placeholder="清單" value="${esc(t.list || '')}"><input id="te_d" type="date" value="${t.due || ''}" aria-label="期限"></div><div class="row"><button class="b" onclick="todoSave('${t.id}')">儲存</button><button class="b g" onclick="ui.editTodo=null;render()">取消</button></div></div>`
+  : `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${t.done ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="todoToggle('${t.id}')"></i><span style="cursor:text;${t.done ? 'text-decoration:line-through;color:var(--mut)' : ''}" onclick="todoEdit('${t.id}')" title="點一下編輯">${esc(t.text)}${t.due ? ` <span class="mut ${t.due < today() && !t.done ? 'bad' : ''}">${t.due === today() ? '今天' : t.due.slice(5)}</span>` : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="todoEdit('${t.id}')" aria-label="編輯">✎</button><button class="x" style="${t.star ? 'color:var(--bar)' : ''}" onclick="todoStar('${t.id}')" aria-label="重要">${t.star ? '★' : '☆'}</button><button class="x" onclick="del('${t.id}')" aria-label="刪除">✕</button></span></div>`;
 function todoList() {
   const ts = all('todo'), open = todosOpen(), f = sub.todo, lists = [...new Set([...TODO_LISTS, ...ts.map(t => t.list)])];
   const shown = open.filter(t => f === 'all' ? true : f === 'today' ? (t.due && t.due <= today()) : f === 'star' ? t.star : t.list === f);
@@ -190,8 +194,12 @@ const QUAD = [['need', true, '必要 · 緊急', '先買'], ['need', false, '必
 window.shopAdd = () => { const n = val('sn'); if (!n) return; put('shop', { name: n, need: val('sk'), urgent: val('su') === '1', price: +val('sp') || 0, bought: false, created: Date.now() }); render(); setTimeout(() => $('#sn') && $('#sn').focus()); };
 window.shopFlip = (id, k) => { const d = DB[id].data; patch(id, k === 'need' ? { need: d.need === 'need' ? 'want' : 'need' } : { urgent: !d.urgent }); render(); };
 window.shopBuy = id => { const d = DB[id].data; patch(id, { bought: !d.bought, boughtAt: d.bought ? null : today() }); render(); };
-const shopRow = x => `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${x.bought ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="shopBuy('${x.id}')"></i><span style="${x.bought ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(x.name)}${x.price ? ` <span class="mut">${money(x.price)}</span>` : ''}</span></span>
-  <span style="flex:none;white-space:nowrap">${x.bought ? '' : `<span class="tag" onclick="shopFlip('${x.id}','need')" title="點一下切換">${x.need === 'need' ? '必要' : '想要'}</span><span class="tag" onclick="shopFlip('${x.id}','urgent')" title="點一下切換">${x.urgent ? '緊急' : '不急'}</span>`}<button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`;
+window.shopEdit = id => { ui.editShop = id; render(); setTimeout(() => $('#se_n') && $('#se_n').focus()); };
+window.shopSave = id => { const n = val('se_n'); if (!n) return; patch(id, { name: n, price: +val('se_p') || 0 }); ui.editShop = null; render(); };
+const shopRow = x => ui.editShop === x.id
+  ? `<div class="item" style="display:block"><div class="row"><input id="se_n" style="flex:2" value="${esc(x.name)}" onkeydown="event.key==='Enter'&&shopSave('${x.id}')"><input id="se_p" type="number" inputmode="decimal" placeholder="預估金額" value="${x.price || ''}"></div><div class="row"><button class="b" onclick="shopSave('${x.id}')">儲存</button><button class="b g" onclick="ui.editShop=null;render()">取消</button></div></div>`
+  : `<div class="item"><span style="display:flex;align-items:flex-start;min-width:0"><i class="dot ${x.bought ? 'on' : ''}" style="flex:none;margin-top:3px" onclick="shopBuy('${x.id}')"></i><span style="cursor:text;${x.bought ? 'text-decoration:line-through;color:var(--mut)' : ''}" onclick="shopEdit('${x.id}')" title="點一下編輯">${esc(x.name)}${x.price ? ` <span class="mut">${money(x.price)}</span>` : ''}</span></span>
+  <span style="flex:none;white-space:nowrap">${x.bought ? '' : `<span class="tag" onclick="shopFlip('${x.id}','need')" title="點一下切換">${x.need === 'need' ? '必要' : '想要'}</span><span class="tag" onclick="shopFlip('${x.id}','urgent')" title="點一下切換">${x.urgent ? '緊急' : '不急'}</span>`}<button class="x" onclick="shopEdit('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`;
 function shopList() {
   const xs = all('shop'), open = xs.filter(x => !x.bought).sort((a, b) => a.created - b.created), bought = xs.filter(x => x.bought).sort((a, b) => (b.boughtAt || '').localeCompare(a.boughtAt || '')).slice(0, 30);
   const sum = l => l.reduce((a, x) => a + (x.price || 0), 0);
@@ -393,18 +401,20 @@ function reading() {
 }
 // Commonplace book＋第二大腦（Tiago Forte）：擷取 Capture → 整理 Organize（PARA）→ 萃取 Distill（一句話重點）→ 表達 Express（轉成小卡）
 const PARA = [['P', '專案'], ['A', '領域'], ['R', '資源'], ['X', '封存']];
-window.cpAdd = () => { const t = $('#ct').value.trim(); if (!t) return; put('quote', { text: t, src: val('cs'), page: val('cpg'), thought: $('#cth').value.trim(), para: val('cpa'), gist: '', date: today(), created: Date.now() }); render(); };
+window.cpAdd = () => { const t = $('#ct').value.trim(); if (!t) return; const d = { text: t, src: val('cs'), page: val('cpg'), thought: $('#cth').value.trim(), para: val('cpa') }; if (ui.cpEd && DB[ui.cpEd]) patch(ui.cpEd, d); else put('quote', { ...d, gist: '', date: today(), created: Date.now() }); ui.cpEd = null; render(); };
+window.cpOpen = id => { ui.cpEd = id; render(); scrollTo(0, 0); setTimeout(() => $('#ct') && $('#ct').focus()); };
 window.cpEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] || ''); if (v === null) return; patch(id, { [k]: v.trim() }); render(); };
 window.cpPara = (id, v) => { patch(id, { para: v }); render(); };
 window.cpToCard = id => { const x = DB[id].data; sub.know = 'notes'; ui.note = null; ui.draft = `${x.gist || ''}\n\n「${x.text}」${x.thought ? '\n\n' + x.thought : ''}`.trim(); ui.draftSrc = x.src + (x.page ? ` p.${x.page}` : ''); render(); scrollTo(0, 0); };
 function commonplace() {
   const q = ui.cq.toLowerCase(), f = ui.cpf || '', qs = all('quote').sort((a, b) => (b.created || 0) - (a.created || 0)).filter(x => (!f || (x.para || 'R') === f) && (!q || (x.text + x.src + x.thought + (x.gist || '')).toLowerCase().includes(q)));
-  return `<div class="card"><h2>擷取</h2><textarea id="ct" style="min-height:84px" placeholder="抄下打動你的一段話"></textarea><div class="row"><input id="cs" list="bks" placeholder="出處（書名／作者）" style="flex:3"><datalist id="bks">${all('book').map(b => `<option value="${esc(b.title)}">`).join('')}</datalist><input id="cpg" placeholder="頁碼" style="flex:1"></div>
-    <textarea id="cth" style="min-height:60px" placeholder="我的想法：為什麼留下它、可以怎麼用"></textarea>
-    <div class="row"><select id="cpa" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${k === 'R' ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b" style="flex:2" onclick="cpAdd()">收進 Commonplace</button></div></div>
+  const E = ui.cpEd && DB[ui.cpEd] && !DB[ui.cpEd].deleted ? DB[ui.cpEd].data : null;
+  return `<div class="card"><h2>${E ? '編輯摘錄' : '擷取'}</h2><textarea id="ct" style="min-height:84px" placeholder="抄下打動你的一段話">${E ? esc(E.text) : ''}</textarea><div class="row"><input id="cs" list="bks" placeholder="出處（書名／作者）" style="flex:3" value="${E ? esc(E.src || '') : ''}"><datalist id="bks">${all('book').map(b => `<option value="${esc(b.title)}">`).join('')}</datalist><input id="cpg" placeholder="頁碼" style="flex:1" value="${E ? esc(E.page || '') : ''}"></div>
+    <textarea id="cth" style="min-height:60px" placeholder="我的想法：為什麼留下它、可以怎麼用">${E ? esc(E.thought || '') : ''}</textarea>
+    <div class="row"><select id="cpa" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${k === (E ? E.para || 'R' : 'R') ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b" style="flex:2" onclick="cpAdd()">${E ? '儲存修改' : '收進 Commonplace'}</button>${E ? `<button class="b g" onclick="ui.cpEd=null;render()">取消</button>` : ''}</div></div>
   <div class="row" style="align-items:center"><input placeholder="搜尋摘錄" value="${esc(ui.cq)}" onchange="ui.cq=this.value;render()"></div>
   <div class="seg" style="margin-top:6px">${[['', '全部'], ...PARA].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" onclick="ui.cpf='${k}';render()">${n}</button>`).join('')}</div>
-  <div data-b="quotes">${qs.map(x => `<div class="card"><blockquote class="qt">${esc(x.text)}</blockquote><div class="mut" style="display:flex;justify-content:space-between"><span>— ${esc(x.src) || '未註明出處'}${x.page ? `，p.${esc(x.page)}` : ''}</span><button class="x" onclick="confirm('刪除這則摘錄？')&&del('${x.id}')">✕</button></div>${x.thought ? `<p style="margin:8px 0 0">${esc(x.thought)}</p>` : ''}
+  <div data-b="quotes">${qs.map(x => `<div class="card"><blockquote class="qt">${esc(x.text)}</blockquote><div class="mut" style="display:flex;justify-content:space-between"><span>— ${esc(x.src) || '未註明出處'}${x.page ? `，p.${esc(x.page)}` : ''}</span><span style="flex:none;white-space:nowrap"><button class="x" onclick="cpOpen('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="confirm('刪除這則摘錄？')&&del('${x.id}')" aria-label="刪除">✕</button></span></div>${x.thought ? `<p style="margin:8px 0 0">${esc(x.thought)}</p>` : ''}
     <p style="margin:10px 0 6px"><span class="eyebrow">一句話重點</span><br><a class="wl" onclick="cpEdit('${x.id}','gist','用自己的話，一句話說出重點')">${esc(x.gist) || '還沒萃取，點這裡寫一句'}</a></p>
     <div class="row" style="align-items:center"><select style="flex:0 0 96px;margin:0" onchange="cpPara('${x.id}',this.value)" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${(x.para || 'R') === k ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b g" style="margin:0" onclick="cpToCard('${x.id}')">轉成知識小卡</button></div></div>`).join('') || '<div class="card"><p class="empty">還沒有摘錄</p></div>'}</div>
   <p class="mut" style="margin:12px 2px">第二大腦的流程：擷取 → 整理（專案／領域／資源／封存）→ 萃取成一句話 → 轉成小卡，變成自己的東西。</p>`;
