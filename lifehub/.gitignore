@@ -1,2 +1,5 @@
 lifehub.db
 token.txt
+sync/.venv/
+sync/local.json
+sync/*.log
