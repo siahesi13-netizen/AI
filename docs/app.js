@@ -1,4 +1,4 @@
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.15.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -326,7 +326,7 @@ function habit() {
   ${weekLog(dates)}`;
 }
 
-// ---------- 飲食管理：輸入食物＋拍照，由後端請 Claude 估算熱量；結果可修改後再存 ----------
+// ---------- 飲食管理：熱量與營養素來自 Apple 健康（OtterLife 寫入，由手機捷徑上傳）；也可以手動記一餐 ----------
 const SLOTS = ['早餐', '午餐', '晚餐', '點心'], waterId = d => 'water_' + d, cups = d => DB[waterId(d)] && !DB[waterId(d)].deleted ? DB[waterId(d)].data.cups : 0;
 window.dietDate = d => { ui.dd = d; render(); };
 window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, waterId(ui.dd)); render(); };
@@ -334,49 +334,28 @@ window.waterGoal = () => { const g = prompt('每日喝水目標（杯）', setti
 window.kcalGoal = () => { const g = prompt('每日攝取熱量目標（kcal）', setting('kcal_goal', 1800)); if (g) { setSetting('kcal_goal', +g); render(); } };
 const mealsOf = d => all('meal').filter(m => m.date === d), mealSum = (d, k) => mealsOf(d).reduce((a, m) => a + (+m[k] || 0), 0);
 const dayKcal = d => mealSum(d, 'kcal') || hv(d, 'diet_kcal');
-// 照片先在裝置上縮到長邊 1024 再上傳；照片只用來估算，不會被儲存
-const shrink = file => new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .8).split(',')[1]); }; img.onerror = () => rej(new Error('image')); img.src = url; });
 const mealMsg = t => { const e = $('#mst'); if (e) e.textContent = t; };
-const NUTRI_ERR = { 'no api key': '後端還沒有設定 Anthropic API 金鑰，所以無法估算。可以先手動填熱量。', 'api error': 'Claude API 回傳錯誤', refused: '這次的內容無法估算，請換個描述或照片。', truncated: '回應被截斷，請再試一次。', 'bad token': '同步金鑰錯誤', empty: '請輸入食物或拍一張照片' };
-window.mealPhoto = async inp => { const f = inp.files && inp.files[0]; if (!f) return; try { ui.mealImg = await shrink(f); $('#mpv').src = 'data:image/jpeg;base64,' + ui.mealImg; $('#mpv').hidden = false; mealMsg('照片已加入'); } catch (e) { mealMsg('這張照片讀不了，請換一張'); } };
-window.mealEstimate = async () => {
-  const text = val('mt'); ui.mealText = text; ui.mealSlot = val('ms');
-  if (!text && !ui.mealImg) return mealMsg(NUTRI_ERR.empty);
-  if (!cfg().url || !cfg().token) return mealMsg('要先設定雲端同步，才能請 AI 估算。可以先手動填熱量。');
-  $('#mest').disabled = true; mealMsg('估算中，大約 10–30 秒…');
-  try { const r = await api('POST', { kind: 'nutrition', text, image: ui.mealImg || undefined, media_type: 'image/jpeg' }), j = await r.json();
-    if (j.error) { $('#mest').disabled = false; return mealMsg((NUTRI_ERR[j.error] || '估算失敗：' + j.error) + (j.status ? `（${j.status}${j.message ? '：' + j.message : ''}）` : '')); }
-    ui.mealEst = j; if (!text) ui.mealText = j.name || ''; render();
-  } catch (e) { $('#mest').disabled = false; mealMsg('連線失敗，請稍後再試'); }
-};
 window.mealAdd = () => { const t = val('mt'); if (!t) return mealMsg('請先輸入這一餐的名稱'); const n = k => +val(k) || 0;
-  put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn'), kcal: n('mk'), protein_g: n('mp'), carbs_g: n('mc'), fat_g: n('mf'), items: ui.mealEst ? ui.mealEst.items : undefined, ai: !!ui.mealEst });
-  ui.mealEst = ui.mealImg = null; ui.mealText = ''; render(); };
-window.mealReset = () => { ui.mealEst = ui.mealImg = null; ui.mealText = ''; render(); };
+  put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn'), kcal: n('mk'), protein_g: n('mp'), carbs_g: n('mc'), fat_g: n('mf'), });
+  render(); };
 window.mealEdit = id => { ui.editMeal = id; render(); };
 window.mealSave = id => { const t = val('me_t'); if (!t) return; const n = k => +val(k) || 0; patch(id, { text: t, slot: val('me_s'), kcal: n('me_k'), protein_g: n('me_p'), carbs_g: n('me_c'), fat_g: n('me_f') }); ui.editMeal = null; render(); };
 const macroIn = (pre, m) => `<div class="row"><input id="${pre}k" type="number" inputmode="numeric" placeholder="熱量 kcal" value="${m.kcal || ''}"><input id="${pre}p" type="number" inputmode="numeric" placeholder="蛋白質 g" value="${m.protein_g || ''}"><input id="${pre}c" type="number" inputmode="numeric" placeholder="碳水 g" value="${m.carbs_g || ''}"><input id="${pre}f" type="number" inputmode="numeric" placeholder="脂肪 g" value="${m.fat_g || ''}"></div>`;
 function diet() {
-  const d = ui.dd, ms = mealsOf(d), wg = setting('water_goal', 8), c = cups(d), dates = weekDates(), E = ui.mealEst;
+  const d = ui.dd, ms = mealsOf(d), wg = setting('water_goal', 8), c = cups(d), dates = weekDates(), ml = hv(d, 'water_ml'), fromHk = !mealSum(d, 'kcal') && hv(d, 'diet_kcal');
   const kg = setting('kcal_goal', 1800), kcal = dayKcal(d), P = mealSum(d, 'protein_g') || hv(d, 'protein_g'), C = mealSum(d, 'carbs_g') || hv(d, 'carbs_g'), F = mealSum(d, 'fat_g') || hv(d, 'fat_g'), mk = P * 4 + C * 4 + F * 9;
   const macro = (n, g, k) => `<div style="display:flex;justify-content:space-between;margin-top:8px"><span>${n}</span><span class="mut">${g ? Math.round(g) + ' g · ' + Math.round(g * k / (mk || 1) * 100) + '%' : '–'}</span></div><div class="bar"><i style="width:${mk ? g * k / mk * 100 : 0}%"></i></div>`;
   const row = m => ui.editMeal === m.id
     ? `<div class="item" style="display:block"><div class="row"><select id="me_s" style="flex:0 0 96px">${SLOTS.map(x => `<option ${x === m.slot ? 'selected' : ''}>${x}</option>`).join('')}</select><input id="me_t" value="${esc(m.text)}"></div>${macroIn('me_', m)}<div class="row"><button class="b" onclick="mealSave('${m.id}')">儲存</button><button class="b g" onclick="ui.editMeal=null;render()">取消</button></div></div>`
-    : `<div class="item"><span>${esc(m.text)}${m.kcal ? ` <b>${Math.round(m.kcal)}</b> <span class="mut">kcal${m.ai ? ' · AI 估算' : ''}</span>` : ''} <span class="mut">${esc(m.note || '')}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="mealEdit('${m.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${m.id}')" aria-label="刪除">✕</button></span></div>`;
-  return `<div class="card"><div class="row"><input type="date" value="${d}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div></div>
-  <div class="card"><h2>記錄一餐</h2><div class="row"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option ${x === ui.mealSlot ? 'selected' : ''}>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼（例：雞腿便當、半糖珍奶）" value="${esc(ui.mealText || '')}"></div>
-    <div class="row" style="align-items:center"><label class="b g" style="text-align:center;cursor:pointer;margin:4px 0">拍照／選照片<input type="file" accept="image/*" hidden onchange="mealPhoto(this)"></label><button class="b" id="mest" onclick="mealEstimate()">AI 估算熱量</button></div>
-    <img id="mpv" alt="這一餐的照片預覽" ${ui.mealImg ? `src="data:image/jpeg;base64,${ui.mealImg}"` : 'hidden'} class="mealpv">
-    <p class="mut" id="mst" style="margin:4px 0;min-height:1.3em">${E ? `估算完成（把握程度：${{ low: '低', medium: '中', high: '高' }[E.confidence] || '–'}）。${esc(E.note || '')}` : ''}</p>
-    ${E && E.items && E.items.length ? `<div style="margin-bottom:6px">${E.items.map(i => `<div class="item"><span>${esc(i.name)} <span class="mut">${esc(i.portion)}</span></span><span>${Math.round(i.kcal)} kcal</span></div>`).join('')}</div>` : ''}
-    ${macroIn('m', E || {})}<input id="mn" placeholder="備註：飽足感、心情（選填）">
-    <div class="row"><button class="b" onclick="mealAdd()">${E ? '確認並存入' : '存入'}</button>${E || ui.mealImg ? '<button class="b g" onclick="mealReset()">清除重來</button>' : ''}</div>
-    <p class="mut" style="margin:6px 0 0">AI 的數字是估計值，存入前可以直接修改。照片只用來估算，不會被保存。不用 AI 也可以自己填熱量。</p></div>
-  <div class="card"><h2>攝取熱量 <a class="wl" onclick="kcalGoal()">目標 ${kg} kcal</a></h2>${num(kcal, 'kcal')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, kcal / kg * 100)}%;background:${kcal > kg ? 'var(--bad)' : 'var(--bar)'}"></i></div><div class="mut">${kcal ? (kcal > kg ? `超過目標 ${Math.round(kcal - kg)} kcal` : `還可以吃 ${Math.round(kg - kcal)} kcal`) : '這一天還沒有記錄'}</div></div>
+    : `<div class="item"><span>${esc(m.text)}${m.kcal ? ` <b>${Math.round(m.kcal)}</b> <span class="mut">kcal</span>` : ''} <span class="mut">${esc(m.note || '')}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="mealEdit('${m.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${m.id}')" aria-label="刪除">✕</button></span></div>`;
+  return hkNote() + `<div class="card"><div class="row"><input type="date" value="${d}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div></div>
+  <div class="card"><h2>攝取熱量 <a class="wl" onclick="kcalGoal()">目標 ${kg} kcal</a></h2>${num(kcal, 'kcal')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, kcal / kg * 100)}%;background:${kcal > kg ? 'var(--bad)' : 'var(--bar)'}"></i></div><div class="mut">${kcal ? (kcal > kg ? `超過目標 ${Math.round(kcal - kg)} kcal` : `還可以吃 ${Math.round(kg - kcal)} kcal`) + (fromHk ? ' · 來自 Apple 健康' : '') : '這一天還沒有資料'}</div></div>
   <div class="card"><h2>${d === today() ? '今日' : d} 餐點</h2>${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl} · ${Math.round(l.reduce((a, m) => a + (+m.kcal || 0), 0))} kcal</div>` + l.map(row).join('') : ''; }).join('') || '<p class="empty">這一天還沒有記錄</p>'}</div>
+  <details class="card" data-b="mealform"${ms.length ? ' open' : ''}><summary style="cursor:pointer"><b class="serif">手動記一餐</b></summary><div class="row" style="margin-top:10px"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div>
+    ${macroIn('m', {})}<input id="mn" placeholder="備註：飽足感、心情（選填）"><button class="b" onclick="mealAdd()">存入</button><p class="mut" id="mst" style="margin:4px 0 0;min-height:1.2em"></p></details>
   <div class="card"><h2>三大營養素</h2>${macro('蛋白質', P, 4)}${macro('碳水化合物', C, 4)}${macro('脂肪', F, 9)}</div>
   <div class="card"><h2>本週攝取熱量</h2>${bars(dates, dates.map(dayKcal))}</div>
-  <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2><div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>`;
+  <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2>${ml ? `<div class="mut" style="margin-bottom:6px">Apple 健康：${Math.round(ml).toLocaleString()} ml</div>` : ''}<div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>`;
 }
 
 // ---------- 未來目標（人生／5・3・1 年／今年 ＋ 曼陀羅九宮格） ----------
