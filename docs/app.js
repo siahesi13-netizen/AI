@@ -1,4 +1,4 @@
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -233,7 +233,18 @@ function weekLog(dates) {
 // ---------- 運動 ----------
 // 運動消耗估算：MET × 體重(kg) × 小時。MET 取自常見活動的代謝當量概略值，強度再乘上係數；只是估計值
 const MET = { '居家徒手': 3.8, '瑜珈': 3, '重訓': 5, '飛輪': 8.5, '跑步': 9.8, '走路': 3.5, '游泳': 7, '單車': 7.5, '球類': 6.5, '其他': 4 }, INTENS = { low: ['輕鬆', .8], mid: ['中等', 1], high: ['激烈', 1.25] };
-const bodyKg = () => +setting('weight_kg', 0) || 0;
+// 體重：每天一筆（type 'weight'，id wt_<日期>）；估算運動消耗時用最新的一筆
+const weights = () => all('weight').filter(w => w.kg > 0).sort((a, b) => a.date.localeCompare(b.date));
+const bodyKg = () => { const w = weights(); return w.length ? w[w.length - 1].kg : (+setting('weight_kg', 0) || 0); };
+window.weightSave = pre => { const kg = Math.round((+val(pre + 'kg') || 0) * 100) / 100, d = val(pre + 'd') || today(); if (!(kg > 0)) return; put('weight', { date: d, kg }, 'wt_' + d); render(); };
+function spark(vals) { if (vals.length < 2) return ''; const mn = Math.min(...vals), mx = Math.max(...vals), sp = (mx - mn) || 1, W = 300, H = 70, pt = (v, i) => `${(i / (vals.length - 1) * (W - 8) + 4).toFixed(1)},${(H - 6 - (v - mn) / sp * (H - 12)).toFixed(1)}`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="體重趨勢" style="width:100%;height:70px;display:block;margin:8px 0 2px"><polyline points="${vals.map(pt).join(' ')}" fill="none" stroke="var(--bar)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="${pt(vals[vals.length - 1], vals.length - 1).split(',')[0]}" cy="${pt(vals[vals.length - 1], vals.length - 1).split(',')[1]}" r="3" fill="var(--cocoa)"/></svg>`; }
+function weightCard(pre, full) {
+  const w = weights(), last = w[w.length - 1], prev = w[w.length - 2], td = w.find(x => x.date === today()), diff = last && prev ? Math.round((last.kg - prev.kg) * 100) / 100 : 0, recent = w.slice(-30);
+  return `<div class="card" data-b="weight"><h2>體重</h2><div class="row" style="align-items:center">${full ? `<input type="date" id="${pre}d" value="${today()}" aria-label="日期">` : ''}<input id="${pre}kg" type="number" inputmode="decimal" step="0.01" placeholder="${td ? '今天已記 ' + td.kg : '今天的體重'}（公斤）" onkeydown="event.key==='Enter'&&weightSave('${pre}')"><button class="b" style="flex:0 0 76px" onclick="weightSave('${pre}')">記錄</button></div>
+    ${last ? `<div style="margin-top:8px"><span class="big">${last.kg}</span><small class="mut"> kg · ${last.date.slice(5).replace('-', '/')}${prev ? ` · 較前一次 ${diff > 0 ? '+' : ''}${diff}` : ''}</small></div>` : '<p class="empty" style="margin-top:8px">還沒有紀錄</p>'}
+    ${full ? spark(recent.map(x => x.kg)) + (recent.length > 1 ? `<div class="mut" style="display:flex;justify-content:space-between"><span>${recent[0].date.slice(5).replace('-', '/')}</span><span>最低 ${Math.min(...recent.map(x => x.kg))} · 最高 ${Math.max(...recent.map(x => x.kg))}</span><span>${last.date.slice(5).replace('-', '/')}</span></div>` : '') + (w.length ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">所有紀錄（${w.length}）</summary>${w.slice().reverse().slice(0, 60).map(x => `<div class="item"><span>${x.date}</span><span><b>${x.kg}</b> kg<button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`).join('')}</details>` : '') : ''}</div>`;
+}
 const wkKcal = x => { const kg = bodyKg(); return kg && x.min ? Math.round((MET[x.kind] || 4) * (INTENS[x.intensity] || INTENS.mid)[1] * kg * x.min / 60) : 0; };
 const linkify = t => esc(t || '').replace(/https?:\/\/[^\s<]+/g, u => `<a class="wl" href="${u}" target="_blank" rel="noopener noreferrer">影片／連結</a>`);
 const fitForm = (x, pre) => `<div class="row"><input type="date" id="${pre}d" value="${x.date || today()}"><select id="${pre}k">${Object.keys(MET).map(k => `<option ${k === x.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
@@ -242,7 +253,6 @@ const fitRead = pre => ({ date: val(pre + 'd') || today(), kind: val(pre + 'k'),
 window.fitAdd = () => { const d = fitRead('f'); if (!d.min) return; put('workout', d); render(); };
 window.fitEdit = id => { ui.editFit = id; render(); };
 window.fitSave = id => { const d = fitRead('e'); if (!d.min) return; patch(id, d); ui.editFit = null; render(); };
-window.fitWeight = () => { const g = prompt('體重（公斤），用來估算運動消耗的熱量', bodyKg() || ''); if (g && +g > 0) { setSetting('weight_kg', +g); render(); } };
 window.fitGoal = () => { const g = prompt('每週運動目標（分鐘）', setting('goal', 150)); if (g) { setSetting('goal', +g); render(); } };
 function fitStats() {
   const w = all('workout'), dates = weekDates(), man = {}; w.forEach(x => man[x.date] = (man[x.date] || 0) + x.min);
@@ -259,7 +269,8 @@ function fit() {
     : `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min} 分${x.km ? ' · ' + x.km + ' km' : ''}${wkKcal(x) ? ` · 約 ${wkKcal(x)} kcal` : ''} <span class="mut">${(INTENS[x.intensity] || INTENS.mid)[0]}${x.note ? ' · ' + linkify(x.note) : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="fitEdit('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`;
   return `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${Math.min(100, s.min / goal * 100)}%"></i></div>
     <div class="grid" style="margin-top:12px"><div>${num(s.min, '分鐘')}<div class="mut">運動時間</div></div><div>${num(kcal, 'kcal')}<div class="mut">運動消耗（估算）</div></div><div>${num(wk.length, '次')}<div class="mut">運動次數</div></div><div>${num(s.streak, '天')}<div class="mut">連續運動</div></div></div>
-    <p class="mut" style="margin:10px 0 0">${kg ? `以體重 <a class="wl" onclick="fitWeight()">${kg} kg</a> 估算` : `<a class="wl" onclick="fitWeight()">設定體重</a>後才能估算消耗的熱量`}，數字是依運動種類、強度、時間推估的概略值。</p></div>
+    <p class="mut" style="margin:10px 0 0">${kg ? `以最新體重 ${kg} kg 估算` : '在下方記錄體重後，才能估算消耗的熱量'}，數字是依運動種類、強度、時間推估的概略值。</p></div>
+  ${weightCard('fw', true)}
   <div class="card"><h2>記錄運動</h2>${fitForm({}, 'f')}<button class="b" onclick="fitAdd()">記錄</button></div>
   <div class="card"><h2>每日運動分鐘</h2>${bars(D, D.map(s.dayMin))}</div>
   <div class="card"><h2>運動紀錄</h2>${s.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40).map(row).join('') || '<p class="empty">還沒有紀錄</p>'}</div>
@@ -500,6 +511,7 @@ function home() {
   ${weekStrip(active)}
     <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     <div class="card"><h2>今日習慣</h2>${hs.map(x => `<div class="item"><span><i class="dot ${hDone(x.id, today()) ? 'on' : ''}" onclick="habitToggle('${x.id}','${today()}')"></i>${esc(x.name)}</span><span class="mut">${esc(x.tiny || '')}</span></div>`).join('') || `<p class="empty">還沒有習慣 · <a class="wl" onclick="go('habit')">建立第一個</a></p>`}</div>
+    ${weightCard('hw', false)}
     <div class="grid" style="margin-bottom:12px" data-b="stats"><div class="card" onclick="go('fit')" style="cursor:pointer"><div class="eyebrow">本週運動</div><div class="big">${f.min}<small class="mut"> / ${goalMin}</small></div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, f.min / goalMin * 100)}%"></i></div><div class="mut">連續 ${f.streak} 天</div></div>
     <div class="card" onclick="go('pfin')" style="cursor:pointer"><div class="eyebrow">個人支出</div><div class="big">${money(P.out)}</div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, P.out / P.budget * 100)}%"></i></div><div class="mut">結餘 ${money(P.inc - P.out)}</div></div></div>
     <div class="card"><h2>目前閱讀</h2>${rd.slice(0, 2).map(b => `<div class="book" style="margin:4px 0 8px"><div class="cover">${esc(b.title.slice(0, 10))}</div><div style="flex:1;min-width:0"><b>${esc(b.title)}</b><div class="mut">${esc(b.author)}</div>${b.pages ? `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><div class="mut">${Math.round(b.cur / b.pages * 100)}%</div>` : ''}</div></div>`).join('') || `<p class="empty">還沒有在讀的書 · <a class="wl" onclick="go('know')">加入書單</a></p>`}</div>
