@@ -1,4 +1,4 @@
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -104,7 +104,7 @@ const ICON = {
 // [key, 側邊欄名稱, 英文副標, 手機底部短名]
 const TABS = [['home', '今日', 'Today', '今日'], ['bujo', '待辦事項', 'To-do', '待辦'], ['habit', '每週習慣建立', 'Weekly Habits', '習慣'], ['diet', '飲食管理', 'Nutrition', '飲食'], ['fit', '運動管理', 'Movement', '運動'],
   ['ffin', '家庭財務', 'Family Finance', '家庭'], ['pfin', '個人財務', 'Personal Finance', '個人'], ['know', '閱讀', 'Reading', '閱讀'], ['goal', '未來目標', 'Future Goals', '目標']];
-let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list', tpage: 'todo', ffin: 'fam' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
+let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list', tpage: 'todo', ffin: 'fam', pfin: 'led' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
 $('#tabs').innerHTML = TABS.map(([k, n, , sn]) => `<button data-k="${k}">${ICON[k]}<span class="nl">${n}</span><span class="ns">${sn}</span></button>`).join('');
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
@@ -115,7 +115,7 @@ function render() {
 }
 
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
-const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : tab === 'ffin' ? ':' + sub.ffin : '');
+const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : tab === 'ffin' ? ':' + sub.ffin : tab === 'pfin' ? ':' + sub.pfin : '');
 // 每個區塊的上緣有一條看不見的拖曳區：按住區塊最上緣即可拖曳重排（沒有圖示，也沒有編輯模式）
 const GRIP = '<div class="grip grip-h" title="按住區塊上緣可拖曳移動"></div>';
 function applyLayout() {
@@ -299,7 +299,9 @@ window.finType = () => { $('#ft_c').innerHTML = ($('#ft_t').value === 'out' ? PF
 window.finBudget = () => { const g = prompt('每月總預算', setting('budget', PFIN.def)); if (g) { setSetting('budget', +g); render(); } };
 window.finCatBudget = c => { const B = setting('catbudget', {}), g = prompt(`「${c}」每月預算（留空表示不設）`, B[c] ?? ''); if (g === null) return; const n = { ...B }; if (g.trim() && +g > 0) n[c] = +g; else delete n[c]; setSetting('catbudget', n); render(); };
 window.finMonth = d => { ui.m = d; render(); };
+const pfinSeg = () => seg('pfin', [['led', '收支'], ['inv', '投資']]);
 function fin() {
+  if (sub.pfin === 'inv') return pfinSeg() + invest();
   const m = ui.m || month(today()), t = txns(m), { inc, out, budget } = finSum(m), by = {}, B = setting('catbudget', {});
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
   const cats = [...new Set([...Object.keys(by), ...Object.keys(B)])].map(c => [c, by[c] || 0]).sort((a, b) => b[1] - a[1]);
@@ -319,7 +321,7 @@ function fin() {
     over.length ? `超出預算 ${over.length} 類：${over.slice(0, 4).map(c => `${esc(c)}（+${money(by[c] - B[c])}）`).join('、')}` : (Object.keys(B).length && rOut ? '所有分類都在預算內' : ''),
     up && up[1] > 0 && Object.keys(pb).length ? `比上個月增加最多的是「${esc(up[0])}」，多了 ${money(up[1])}` : ''
   ]) + advice('pfin') : '';
-  return `<div class="card" data-b="sum"><input type="month" value="${m}" onchange="finMonth(this.value)">
+  return pfinSeg() + `<div class="card" data-b="sum"><input type="month" value="${m}" onchange="finMonth(this.value)">
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
   <div class="mut"><a class="wl" onclick="finBudget()">總預算 ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
@@ -330,9 +332,39 @@ function fin() {
   <div class="card" data-b="list"><h2>明細</h2>${t.sort((a, b) => b.date.localeCompare(a.date)).map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">本月尚無帳目</p>'}</div>` + analysis;
 }
 
+// ---------- 投資（個人財務的分頁）：投入金額來自記帳裡「投資」分類；持有部位與市值手動維護 ----------
+window.invAdd = () => { const n = val('iv_n'); if (!n) return; put('holding', { name: n, kind: val('iv_k'), cost: +val('iv_c') || 0, value: +val('iv_v') || 0, at: today() }); render(); };
+window.invEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, k === 'name' || k === 'kind' ? { [k]: v.trim() } : { [k]: +v || 0, at: today() }); render(); };
+function invest() {
+  const T = all('txn').filter(x => x.type === 'out' && x.cat === '投資').sort((a, b) => b.date.localeCompare(a.date)), H = all('holding').sort((a, b) => b.value - a.value);
+  const put_ = T.reduce((a, x) => a + x.amount, 0), cost = H.reduce((a, x) => a + x.cost, 0), value = H.reduce((a, x) => a + x.value, 0);
+  const ms = []; for (let k = month(today()), i = 0; i < 12; i++, k = prevMonth(k)) ms.unshift(k);
+  const per = ms.map(k => T.filter(x => month(x.date) === k).reduce((a, x) => a + x.amount, 0)), mx = Math.max(1, ...per), n = per.filter(Boolean).length;
+  return `<div class="card" data-b="sum"><div class="grid"><div><div class="eyebrow">記帳裡累計投入</div><div class="big">${money(put_)}</div></div><div><div class="eyebrow">持有部位市值</div><div class="big">${H.length ? money(value) : '—'}</div></div></div>
+  ${H.length ? `<p style="margin:10px 0 0">成本 <b>${money(cost)}</b>・未實現損益 <b class="${value - cost >= 0 ? 'ok' : 'bad'}">${value - cost >= 0 ? '+' : ''}${money(value - cost)}</b>${cost ? `（${((value - cost) / cost * 100).toFixed(1)}%）` : ''}</p>` : ''}
+  <p class="mut" style="margin:6px 0 0">近 12 個月有 ${n} 個月投入${n ? `，平均每次 ${money(per.reduce((a, x) => a + x, 0) / n)}` : ''}。投入金額取自「收支」裡分類為「投資」的帳目。</p></div>
+  <div class="card" data-b="trend"><h2>每月投入</h2><div class="bars" style="grid-template-columns:repeat(12,1fr)">${ms.map((k, i) => `<div class="${k === month(today()) ? 'td' : ''}"><span>${per[i] ? Math.round(per[i] / 1000) + 'k' : ''}</span><i style="height:${per[i] / mx * 72}%"></i><small>${+k.slice(5)}</small></div>`).join('')}</div></div>
+  <div class="card" data-b="hold"><h2>持有部位</h2>${H.map(x => `<div class="item"><span><a class="wl" onclick="invEdit('${x.id}','name','名稱')">${esc(x.name)}</a> <span class="mut">${esc(x.kind || '')}・成本 <a class="wl" onclick="invEdit('${x.id}','cost','成本')">${money(x.cost)}</a>・${esc(x.at || '')}</span></span><span><a class="wl" onclick="invEdit('${x.id}','value','目前市值')"><b>${money(x.value)}</b></a> <span class="${x.value - x.cost >= 0 ? 'ok' : 'bad'}" style="font-size:12.5px">${x.cost ? ((x.value - x.cost) / x.cost * 100).toFixed(1) + '%' : ''}</span><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">還沒有持有部位。在下面新增（例如某檔 ETF、基金、存股），之後點市值就能更新。</p>'}
+  ${H.length && value > 0 ? `<div style="margin-top:10px">${H.map(x => `<div class="mut">${esc(x.name)}（${pct(x.value, value)}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.min(100, x.value / value * 100)}%"></i></div>`).join('')}</div>` : ''}</div>
+  <div class="card" data-b="add"><h2>新增持有部位</h2><div class="row"><input id="iv_n" placeholder="名稱（例：0050）"><input id="iv_k" placeholder="類型（例：ETF、基金、股票）"></div><div class="row"><input id="iv_c" type="number" inputmode="decimal" placeholder="累計成本"><input id="iv_v" type="number" inputmode="decimal" placeholder="目前市值"></div><button class="b" onclick="invAdd()">新增</button></div>
+  <div class="card" data-b="list"><h2>投入紀錄</h2>${T.map(x => `<div class="item"><span>${x.date} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><b>${money(x.amount)}</b></div>`).join('') || '<p class="empty">記帳裡還沒有「投資」分類的帳目</p>'}</div>
+  <p class="mut" style="margin:0 2px 12px">這頁只做整理與計算，不提供投資建議。</p>`;
+}
+
 // ---------- 家庭財務（唯讀：後端從伴侶的記帳試算表讀出家庭類別，每月彙整成一筆 fam 紀錄） ----------
 const famAll = () => all('fam').sort((a, b) => a.month.localeCompare(b.month));
-const famTotal = (m = month(today())) => (famAll().find(x => x.month === m) || {}).total || 0;
+// 結算用：把我自己記帳裡「家庭開支-」的支出併進來。
+// 與伴侶帳上「我給家庭」日期相近（±4 天）且金額相近（±25%）的那筆是轉帳，不算支出（錢已由伴侶花在家庭開支上）；其餘是我直接付的家庭開支。
+const famFull = () => famAll().map(f => {
+  const gv = (f.give || []).slice(), direct = [];
+  all('txn').filter(x => x.type === 'out' && /^家庭開支/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
+    const j = gv.findIndex(g => Math.abs(new Date(g[0]) - new Date(x.date)) <= 4 * 864e5 && Math.abs(g[2] - x.amount) <= g[2] * 0.25);
+    if (j >= 0) gv.splice(j, 1); else direct.push(x);
+  });
+  const mine = direct.reduce((a, x) => a + x.amount, 0), cats = { ...f.cats }; direct.forEach(x => cats[x.cat] = (cats[x.cat] || 0) + x.amount);
+  return { ...f, pTotal: f.total, mine, total: f.total + mine, cats, items: [...f.items.map(x => [...x, '伴侶']), ...direct.map(x => [x.date, x.note || x.cat.replace('家庭開支-', ''), x.cat, x.amount, '我'])].sort((a, b) => b[0].localeCompare(a[0])) };
+});
+const famTotal = (m = month(today())) => (famFull().find(x => x.month === m) || {}).total || 0;
 let famBusy = false;
 window.famRefresh = async link => {
   if (famBusy || !cfg().token) return; famBusy = true; ui.famMsg = '讀取中…'; if (tab === 'ffin') render();
@@ -345,6 +377,7 @@ window.famRefresh = async link => {
 };
 window.famLink = () => { const v = val('fam_l') || prompt('貼上記帳試算表的連結'); if (v) famRefresh(v); };
 window.famMonth = m => { ui.fm = m; render(); };
+window.famShare = () => { const v = prompt('我應負擔家庭支出的比例（%）', setting('famshare', 50)); if (v === null) return; setSetting('famshare', Math.max(0, Math.min(100, +v || 0))); render(); };
 // 沒有轉帳、以其他花費抵扣的月份：{ 'yyyy-MM': 金額 }，金額 0 表示只標記不計金額
 window.famOffset = m => { const O = setting('famoffset', {}), v = prompt(`${+m.slice(5)} 月以其他花費抵扣的金額（不確定填 0；清空表示取消標記）`, O[m] ?? 0); if (v === null) return; const n = { ...O }; if (v.trim() === '') delete n[m]; else n[m] = Math.max(0, +v || 0); setSetting('famoffset', n); render(); };
 function ffin() {
@@ -353,26 +386,31 @@ function ffin() {
   return head + famView();
 }
 function famView() {
-  const F = famAll(), msg = ui.famMsg ? `<p class="mut" style="margin:0 2px 12px">${esc(ui.famMsg)}</p>` : '';
+  const F = famFull(), msg = ui.famMsg ? `<p class="mut" style="margin:0 2px 12px">${esc(ui.famMsg)}</p>` : '';
   if (cfg().token && !famBusy && Date.now() - (LS('lh_famAt') || 0) > 30 * 6e4) { LS('lh_famAt', Date.now()); setTimeout(() => famRefresh(), 0); } // 每 30 分鐘最多向來源試算表重讀一次
   if (!F.length) return msg + `<div class="card" data-b="setup"><h2>連結家庭記帳表</h2><p class="mut" style="margin:0 0 8px">貼上伴侶記帳試算表的連結，這頁會顯示其中的家庭類別彙總。連結只存在你自己的後端，不會出現在公開的程式碼裡。</p><input id="fam_l" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="b" onclick="famLink()">連結並讀取</button></div>`;
   const cur = F.find(x => x.month === ui.fm) || F.find(x => x.month === month(today())) || F[F.length - 1], i = F.indexOf(cur), prev = F[i - 1];
   const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), last = F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), y = cur.month.slice(0, 4), yr = F.filter(x => x.month.startsWith(y)), OFF = setting('famoffset', {});
-  const avg = last.reduce((a, x) => a + x.total, 0) / last.length, ytotal = yr.reduce((a, x) => a + x.total, 0), ygiven = yr.reduce((a, x) => a + (x.given || 0) + (OFF[x.month] || 0), 0), big = cur.items.slice().sort((a, b) => b[3] - a[3])[0];
+  const avg = last.reduce((a, x) => a + x.total, 0) / last.length, ytotal = yr.reduce((a, x) => a + x.total, 0), paid = x => (x.given || 0) + (x.mine || 0) + (OFF[x.month] || 0), ygiven = yr.reduce((a, x) => a + paid(x), 0), share = setting('famshare', 50), due = ytotal * share / 100, big = cur.items.slice().sort((a, b) => b[3] - a[3])[0];
   return msg + `<div class="card" data-b="sum"><select onchange="famMonth(this.value)">${F.slice().reverse().map(x => `<option value="${x.month}" ${x === cur ? 'selected' : ''}>${x.month.replace('-', ' 年 ')} 月</option>`).join('')}</select>
   <div style="margin-top:10px"><div class="eyebrow">家庭支出</div><div class="big">${money(cur.total)}</div></div>
-  ${cur.given ? `<p style="margin:8px 0 0">我給家庭 <b>${money(cur.given)}</b></p>` : ''}<p class="mut" style="margin:6px 0 0">${prev ? `上月 ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
+  <p style="margin:8px 0 0">伴侶付 <b>${money(cur.pTotal)}</b>・我直接付 <b>${money(cur.mine)}</b>${cur.given ? `・我轉給家庭 <b>${money(cur.given)}</b>` : ''}</p><p class="mut" style="margin:6px 0 0">${prev ? `上月 ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
   <div class="card" data-b="cats"><h2>分類</h2>${cats.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${cur.total > 0 ? Math.round(v / cur.total * 100) : 0}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.max(0, Math.min(100, cur.total > 0 ? v / cur.total * 100 : 0))}%"></i></div>`).join('')}</div>
   <div class="card" data-b="trend"><h2>近 ${last.length} 個月</h2><div class="bars" style="grid-template-columns:repeat(${last.length},1fr)">${last.map(x => `<div class="${x === cur ? 'td' : ''}" onclick="famMonth('${x.month}')" style="cursor:pointer"><span>${Math.round(x.total).toLocaleString()}</span><i style="height:${Math.max(0, x.total) / mx * 72}%"></i><small>${+x.month.slice(5)} 月</small></div>`).join('')}</div></div>
-  ${yr.some(x => x.given || OFF[x.month] !== undefined) ? `<div class="card" data-b="give"><h2>${y} 年我給家庭</h2>${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">家庭支出 ${money(x.total)}</span></span><span>${x.given ? `<b>${money(x.given)}</b>` : ''}${o !== undefined ? ` <a class="wl mut" onclick="famOffset('${x.month}')">${o ? '抵扣 ' + money(o) : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">未記錄</a>`}</span></div>`; }).join('')}<div class="item"><span><b>合計</b> <span class="mut">家庭支出 ${money(yr.reduce((a, x) => a + x.total, 0))}</span></span><span><b>${money(yr.reduce((a, x) => a + (x.given || 0) + (OFF[x.month] || 0), 0))}</b>${yr.some(x => OFF[x.month] === 0) ? ` <span class="mut">另 ${yr.filter(x => OFF[x.month] === 0).length} 個月抵扣</span>` : ''}</span></div><p class="mut" style="margin:8px 0 0">沒有轉帳、改用其他花費抵扣的月份，點「未記錄」標記；知道金額可以一併填上。</p></div>` : ''}
+  <div class="card" data-b="give"><h2>${y} 年結算</h2>
+  <div class="item mut"><span>月份・家庭支出</span><span>我負擔（轉帳＋直接付）</span></div>
+  ${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">${money(x.total)}</span></span><span>${paid(x) ? `<b>${money(paid(x))}</b> <span class="mut">${[x.given ? '轉 ' + money(x.given) : '', x.mine ? '付 ' + money(x.mine) : '', o ? '抵 ' + money(o) : ''].filter(Boolean).join('＋')}</span>` : ''} ${o !== undefined ? `<a class="wl mut" onclick="famOffset('${x.month}')">${o ? '改抵扣' : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">${paid(x) ? '加抵扣' : '未記錄'}</a>`}</span></div>`; }).join('')}
+  <div class="item"><span><b>合計</b> <span class="mut">${money(ytotal)}</span></span><b>${money(ygiven)}</b></div>
+  <p style="margin:10px 0 0">依 <a class="wl" onclick="famShare()">我 ${share}%／伴侶 ${100 - share}%</a> 分攤：我應負擔 <b>${money(due)}</b>，實際負擔 <b>${money(ygiven)}</b>，${Math.abs(ygiven - due) < 1 ? '剛好打平' : ygiven > due ? `<b class="ok">我多付 ${money(ygiven - due)}</b>` : `<b class="bad">我少付 ${money(due - ygiven)}</b>`}</p>
+  <p class="mut" style="margin:8px 0 0">家庭支出＝伴侶帳上的家庭類別＋我記帳裡「家庭開支-」的支出（轉給家庭帳戶的那筆不重複計算）。${yr.some(x => OFF[x.month] === 0) ? `另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月標記為以其他花費抵扣但沒填金額，尚未算進我負擔的部分；` : ''}點月份右邊可標記或修改抵扣金額，點比例可調整分攤方式。</p></div>
   ${tips([
     last.length > 1 ? `近 ${last.length} 個月平均 <b>${money(avg)}</b>，本月${cur.total >= avg ? '高於' : '低於'}平均 ${money(Math.abs(cur.total - avg))}` : '',
     cats[0] && cur.total > 0 ? `最大宗是「${esc(cats[0][0])}」<b>${money(cats[0][1])}</b>，佔 ${pct(cats[0][1], cur.total)}%` : '',
-    ygiven && ytotal > 0 ? `${y} 年至今家庭支出 <b>${money(ytotal)}</b>，我給了 <b>${money(ygiven)}</b>，相當於 ${pct(ygiven, ytotal)}%` : '',
+    ygiven && ytotal > 0 ? `${y} 年至今家庭支出 <b>${money(ytotal)}</b>，我負擔 <b>${money(ygiven)}</b>，相當於 ${pct(ygiven, ytotal)}%` : '',
     big ? `單筆最高：${big[0].slice(5)} ${esc(big[1])} ${money(big[3])}` : ''
   ])}${advice('ffin')}
-  <div class="card" data-b="list"><h2>明細</h2>${cur.items.map(x => `<div class="item"><span>${x[0].slice(5)} ${esc(x[1])} <span class="mut">${esc(x[2])}</span></span><b>${money(x[3])}</b></div>`).join('')}</div>
-  <p class="mut" style="margin:0 2px 12px">資料來自伴侶的記帳試算表（唯讀）${at ? '・上次讀取 ' + new Date(at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}・<a class="wl" onclick="famRefresh()">重新讀取</a>・<a class="wl" onclick="famLink()">更換來源</a></p>`;
+  <div class="card" data-b="list"><h2>明細</h2>${cur.items.map(x => `<div class="item"><span>${x[0].slice(5)} ${esc(x[1])} <span class="mut">${esc(x[2])}・${x[4]}付</span></span><b>${money(x[3])}</b></div>`).join('')}</div>
+  <p class="mut" style="margin:0 2px 12px">資料來自伴侶的記帳試算表（唯讀）與我的個人記帳${at ? '・上次讀取 ' + new Date(at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}・<a class="wl" onclick="famRefresh()">重新讀取</a>・<a class="wl" onclick="famLink()">更換來源</a></p>`;
 }
 
 // 伴侶財務分析：資料來自同一份試算表的年度損益彙總與資產負債（唯讀），後端整理成 partner_yyyy
