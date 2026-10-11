@@ -110,7 +110,36 @@ function familyChanges_(all, index) {
     if (index[id] !== undefined && all[index[id]][4] !== true && all[index[id]][2] === JSON.stringify(data)) return; // 沒變就不寫
     out.push({ id: id, type: 'fam', data: data, updated_at: Date.now() });
   });
+  const pc = partnerChange_(ss, all, index); if (pc) out.push(pc);
   return out;
+}
+
+// 同一份試算表的年度損益彙總與資產負債，整理成一筆（type: partner，id: partner_yyyy），給「伴侶財務分析」分頁用
+function partnerChange_(ss, all, index) {
+  const y = new Date().getFullYear(), data = { year: y, income: {}, expense: {}, assets: [], liabs: [] }, n = x => Math.round(Number(x) || 0);
+  const sh = ss.getSheetByName('年度損益彙總-' + y), bs = ss.getSheetByName('資產負債');
+  if (!sh && !bs) return null;
+  if (sh) {
+    let sec = '';
+    sh.getRange(1, 1, Math.min(sh.getLastRow(), 80), 13).getValues().forEach(r => {
+      const k = String(r[0]).trim(), v = r.slice(1, 13).map(n);
+      if (k === '收入' || k === '支出') { sec = k; return; }
+      if (!k || !sec) return;
+      if (k === '收入總額') data.incTotal = v; else if (k === '支出總額') data.expTotal = v; else if (/^本期餘/.test(k)) data.net = v;
+      else if (v.some(Boolean)) data[sec === '收入' ? 'income' : 'expense'][k] = v;
+    });
+  }
+  if (bs) {
+    bs.getRange(1, 1, Math.min(bs.getLastRow(), 60), 11).getValues().forEach((r, i) => {
+      if (i === 0) { data.asOf = String(r[1]).replace(/\s+/g, ' ').trim(); return; }
+      const a = String(r[1]).trim(), av = n(r[5]), l = String(r[6]).trim(), lv = n(r[10]);
+      if (a === '資產總額') data.assetTotal = av; else if (a && a !== '資產' && av) data.assets.push([a, av]);
+      if (l === '負債總額') data.liabTotal = lv; else if (l === '淨資產') data.netWorth = lv; else if (l && l !== '負債' && lv) data.liabs.push([l, lv]);
+    });
+  }
+  const id = 'partner_' + y;
+  if (index[id] !== undefined && all[index[id]][4] !== true && all[index[id]][2] === JSON.stringify(data)) return null;
+  return { id: id, type: 'partner', data: data, updated_at: Date.now() };
 }
 
 // 記一筆個人帳（給 iOS 捷徑用：{ token, kind:"txn", amount, cat, type?: 支出|收入, note?, acct?, date? }）
