@@ -1,4 +1,4 @@
-const APP_VERSION = '1.24.1';
+const APP_VERSION = '1.24.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -416,9 +416,21 @@ function tradeCard() {
   const sum = f => T.filter(f).reduce((a, x) => a + x.amount, 0), dca = -sum(x => x.side === 'buy' && x.kind === '定期定額'), pick = -sum(x => x.side === 'buy' && x.kind !== '定期定額'), sold = sum(x => x.side === 'sell'), pl = T.reduce((a, x) => a + (x.pl || 0), 0);
   const by = {}; T.forEach(x => { const o = by[x.name] = by[x.name] || { buy: 0, sell: 0, pl: 0, n: 0, dca: true, bs: 0, ss: 0 }; o.n++; if (x.side === 'buy') { o.buy -= x.amount; o.bs += x.shares; } else { o.sell += x.amount; o.ss += x.shares; } o.pl += x.pl || 0; if (x.kind !== '定期定額') o.dca = false; });
   const names = Object.entries(by).sort((a, b) => (a[1].dca ? 1 : 0) - (b[1].dca ? 1 : 0) || b[1].buy - a[1].buy), ms = [...new Set(T.map(x => month(x.date)))].sort().reverse();
+  // 非定期定額的個股（該標的今年沒有任何定期定額買進）：已實現損益來自賣出紀錄，仍持有的用「持有部位」的市值算未實現損益
+  const dcaNames = new Set(T.filter(x => x.kind === '定期定額').map(x => x.name)), H = {}; all('holding').forEach(h => H[h.name] = h);
+  const pk = names.filter(([n]) => !dcaNames.has(n)), pBuy = pk.reduce((a, [, o]) => a + o.buy, 0), pSell = pk.reduce((a, [, o]) => a + o.sell, 0), pPl = pk.reduce((a, [, o]) => a + o.pl, 0);
+  const held = pk.filter(([n, o]) => o.bs > o.ss && H[n]), hCost = held.reduce((a, [n]) => a + H[n].cost, 0), hVal = held.reduce((a, [n]) => a + H[n].value, 0), gone = pk.filter(([n, o]) => o.bs > o.ss && !H[n]);
+  const extra = -T.filter(x => x.side === 'buy' && x.kind !== '定期定額' && dcaNames.has(x.name)).reduce((a, x) => a + x.amount, 0), sign = v => (v >= 0 ? '+' : '-') + money(Math.abs(v));
+  const pickBox = !pk.length ? '' : `<div style="margin:14px 0 0;padding:12px;border-radius:10px;background:var(--tagbg)"><div class="eyebrow">${y} 年非定期定額（個股 ${pk.length} 檔）</div>
+  <div class="big ${pPl + hVal - hCost >= 0 ? 'ok' : 'bad'}" style="font-size:21px">${pPl + hVal - hCost >= 0 ? '目前賺 ' : '目前賠 '}${money(Math.abs(pPl + hVal - hCost))}</div>
+  <div class="item"><span>買進總額</span><b>${money(pBuy)}</b></div><div class="item"><span>賣出收回</span><b>${money(pSell)}</b></div><div class="item"><span>已實現損益</span><b class="${pPl >= 0 ? 'ok' : 'bad'}">${sign(pPl)}</b></div>
+  <div class="item"><span>仍持有 <span class="mut">${held.map(([n]) => esc(n)).join('、') || '無'}・成本 ${money(hCost)}・市值 ${money(hVal)}</span></span><b class="${hVal - hCost >= 0 ? 'ok' : 'bad'}">${sign(hVal - hCost)}</b></div>
+  ${gone.length ? `<p class="mut" style="margin:8px 0 0">有買進但缺賣出紀錄、也不在持有部位裡：${gone.map(([n, o]) => `${esc(n)} ${o.bs - o.ss} 股`).join('、')}。這幾筆的損益還沒算進來。</p>` : ''}
+  ${extra ? `<p class="mut" style="margin:6px 0 0">另外用零股加碼定期定額標的 ${money(extra)}，不算在個股裡。</p>` : ''}</div>`;
   return `<div class="card" data-b="trades"><h2>交易明細</h2>${years.length > 1 ? `<div class="seg" style="margin-bottom:10px">${years.map(v => `<button class="${v === y ? 'on' : ''}" onclick="ui.ty='${v}';render()">${v}</button>`).join('')}</div>` : ''}
   <div class="grid"><div><div class="eyebrow">${y} 年定期定額買進</div><div class="big">${money(dca)}</div></div><div><div class="eyebrow">其他買進</div><div class="big">${money(pick)}</div></div></div>
   <div class="grid" style="margin-top:10px"><div><div class="eyebrow">賣出收回</div><div class="big">${money(sold)}</div></div><div><div class="eyebrow">已實現損益</div><div class="big ${pl >= 0 ? 'ok' : 'bad'}">${pl >= 0 ? '+' : ''}${money(pl)}</div></div></div>
+  ${pickBox}
   <p class="mut" style="margin:8px 0 0">共 ${T.length} 筆；淨流出 ${money(dca + pick - sold)}。金額含手續費與交易稅，依券商明細。</p>
   <h2 style="margin-top:16px">依標的</h2>${names.map(([n, o]) => `<div class="item"><span>${esc(n)} <span class="mut">${o.dca ? '定期定額' : ''}${o.dca ? '・' : ''}買 ${money(o.buy)}${o.sell ? '・賣 ' + money(o.sell) : ''}・買 ${o.bs} 股${o.ss ? `・賣 ${o.ss} 股` : ''}</span></span>${o.sell ? `<b class="${o.pl >= 0 ? 'ok' : 'bad'}">${o.pl >= 0 ? '+' : ''}${money(o.pl)}</b>` : '<span class="mut">無賣出紀錄</span>'}</div>`).join('')}
   <h2 style="margin-top:16px">逐筆</h2>${ms.map((k, i) => `<details ${i === 0 ? 'open' : ''}><summary style="cursor:pointer;padding:6px 0">${+k.slice(5)} 月 <span class="mut">${T.filter(x => month(x.date) === k).length} 筆</span></summary>${T.filter(x => month(x.date) === k).map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.name)} <span class="mut">${esc(x.kind)}${x.side === 'buy' ? '買進' : '賣出'}・${x.price}${x.shares ? ' × ' + x.shares : ''}</span></span><span style="text-align:right"><b>${x.amount > 0 ? '+' : '-'}${money(Math.abs(x.amount))}</b>${x.pl !== undefined && x.pl !== null ? `<br><span class="${x.pl >= 0 ? 'ok' : 'bad'}" style="font-size:12.5px">損益 ${x.pl >= 0 ? '+' : ''}${money(x.pl)}</span>` : ''}</span></div>`).join('')}</details>`).join('')}
