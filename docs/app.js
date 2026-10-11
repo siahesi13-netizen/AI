@@ -1,4 +1,4 @@
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.16.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -320,18 +320,20 @@ window.famRefresh = async link => {
 };
 window.famLink = () => { const v = val('fam_l') || prompt('貼上記帳試算表的連結'); if (v) famRefresh(v); };
 window.famMonth = m => { ui.fm = m; render(); };
+// 沒有轉帳、以其他花費抵扣的月份：{ 'yyyy-MM': 金額 }，金額 0 表示只標記不計金額
+window.famOffset = m => { const O = setting('famoffset', {}), v = prompt(`${+m.slice(5)} 月以其他花費抵扣的金額（不確定填 0；清空表示取消標記）`, O[m] ?? 0); if (v === null) return; const n = { ...O }; if (v.trim() === '') delete n[m]; else n[m] = Math.max(0, +v || 0); setSetting('famoffset', n); render(); };
 function ffin() {
   const F = famAll(), msg = ui.famMsg ? `<p class="mut" style="margin:0 2px 12px">${esc(ui.famMsg)}</p>` : '';
   if (cfg().token && !famBusy && Date.now() - (LS('lh_famAt') || 0) > 30 * 6e4) { LS('lh_famAt', Date.now()); setTimeout(() => famRefresh(), 0); } // 每 30 分鐘最多向來源試算表重讀一次
   if (!F.length) return msg + `<div class="card" data-b="setup"><h2>連結家庭記帳表</h2><p class="mut" style="margin:0 0 8px">貼上伴侶記帳試算表的連結，這頁會顯示其中的家庭類別彙總。連結只存在你自己的後端，不會出現在公開的程式碼裡。</p><input id="fam_l" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="b" onclick="famLink()">連結並讀取</button></div>`;
   const cur = F.find(x => x.month === ui.fm) || F.find(x => x.month === month(today())) || F[F.length - 1], i = F.indexOf(cur), prev = F[i - 1];
-  const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), last = F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), y = cur.month.slice(0, 4), yr = F.filter(x => x.month.startsWith(y));
+  const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), last = F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), y = cur.month.slice(0, 4), yr = F.filter(x => x.month.startsWith(y)), OFF = setting('famoffset', {});
   return msg + `<div class="card" data-b="sum"><select onchange="famMonth(this.value)">${F.slice().reverse().map(x => `<option value="${x.month}" ${x === cur ? 'selected' : ''}>${x.month.replace('-', ' 年 ')} 月</option>`).join('')}</select>
   <div style="margin-top:10px"><div class="eyebrow">家庭支出</div><div class="big">${money(cur.total)}</div></div>
   ${cur.given ? `<p style="margin:8px 0 0">我給家庭 <b>${money(cur.given)}</b></p>` : ''}<p class="mut" style="margin:6px 0 0">${prev ? `上月 ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
   <div class="card" data-b="cats"><h2>分類</h2>${cats.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${cur.total > 0 ? Math.round(v / cur.total * 100) : 0}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.max(0, Math.min(100, cur.total > 0 ? v / cur.total * 100 : 0))}%"></i></div>`).join('')}</div>
   <div class="card" data-b="trend"><h2>近 ${last.length} 個月</h2><div class="bars" style="grid-template-columns:repeat(${last.length},1fr)">${last.map(x => `<div class="${x === cur ? 'td' : ''}" onclick="famMonth('${x.month}')" style="cursor:pointer"><span>${Math.round(x.total).toLocaleString()}</span><i style="height:${Math.max(0, x.total) / mx * 72}%"></i><small>${+x.month.slice(5)} 月</small></div>`).join('')}</div></div>
-  ${yr.some(x => x.given) ? `<div class="card" data-b="give"><h2>${y} 年我給家庭</h2>${yr.map(x => `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">家庭支出 ${money(x.total)}</span></span><b class="${x.given ? '' : 'mut'}">${x.given ? money(x.given) : '未記錄'}</b></div>`).join('')}<div class="item"><span><b>合計</b> <span class="mut">家庭支出 ${money(yr.reduce((a, x) => a + x.total, 0))}</span></span><b>${money(yr.reduce((a, x) => a + (x.given || 0), 0))}</b></div></div>` : ''}
+  ${yr.some(x => x.given || OFF[x.month] !== undefined) ? `<div class="card" data-b="give"><h2>${y} 年我給家庭</h2>${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">家庭支出 ${money(x.total)}</span></span><span>${x.given ? `<b>${money(x.given)}</b>` : ''}${o !== undefined ? ` <a class="wl mut" onclick="famOffset('${x.month}')">${o ? '抵扣 ' + money(o) : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">未記錄</a>`}</span></div>`; }).join('')}<div class="item"><span><b>合計</b> <span class="mut">家庭支出 ${money(yr.reduce((a, x) => a + x.total, 0))}</span></span><span><b>${money(yr.reduce((a, x) => a + (x.given || 0) + (OFF[x.month] || 0), 0))}</b>${yr.some(x => OFF[x.month] === 0) ? ` <span class="mut">另 ${yr.filter(x => OFF[x.month] === 0).length} 個月抵扣</span>` : ''}</span></div><p class="mut" style="margin:8px 0 0">沒有轉帳、改用其他花費抵扣的月份，點「未記錄」標記；知道金額可以一併填上。</p></div>` : ''}
   <div class="card" data-b="list"><h2>明細</h2>${cur.items.map(x => `<div class="item"><span>${x[0].slice(5)} ${esc(x[1])} <span class="mut">${esc(x[2])}</span></span><b>${money(x[3])}</b></div>`).join('')}</div>
   <p class="mut" style="margin:0 2px 12px">資料來自伴侶的記帳試算表（唯讀）${at ? '・上次讀取 ' + new Date(at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}・<a class="wl" onclick="famRefresh()">重新讀取</a>・<a class="wl" onclick="famLink()">更換來源</a></p>`;
 }
