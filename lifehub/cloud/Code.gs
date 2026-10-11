@@ -73,6 +73,55 @@ function nutrition_(body) {
   try { return Object.assign({ ok: true }, JSON.parse(t)); } catch (err) { return { error: 'bad json' }; }
 }
 
+// ---------- 家庭開支：讀取另一份記帳試算表，只取家庭類別，彙整成每月一筆（type: fam，id: fam_yyyy-MM） ----------
+// 來源試算表的 ID 只存在「指令碼屬性」FAMILY_SHEET（由前端貼連結設定），不寫進程式碼。類別可用 FAMILY_CATS 覆寫（逗號分隔）。
+// 明細工作表的格式：第一列為 摘要／日期／類型／支出…；只讀最近 14 個月。
+// FAMILY_GIVE（正規表示式，選填）：摘要或類型符合、且金額為負的列，視為「我給家庭帳戶的錢」，另外列在 give。
+const FAM_CATS = ['外食費-家庭', '貓費用', '日用品費-家庭', '交通費-家庭', '租金水電', '電信費'];
+function familyChanges_(all, index) {
+  const P = PropertiesService.getScriptProperties(), sid = P.getProperty('FAMILY_SHEET');
+  if (!sid) return { error: 'no family sheet' };
+  let ss; try { ss = SpreadsheetApp.openById(sid); } catch (err) { return { error: 'cannot open family sheet' }; }
+  const cats = (P.getProperty('FAMILY_CATS') || FAM_CATS.join(',')).split(',').map(s => s.trim()).filter(String);
+  let giveRe = null; try { const g = P.getProperty('FAMILY_GIVE'); if (g) giveRe = new RegExp(g); } catch (err) {}
+  const tz = ss.getSpreadsheetTimeZone(), now = new Date(), cut = Utilities.formatDate(new Date(now.getFullYear(), now.getMonth() - 13, 1), tz, 'yyyy-MM'), by = {};
+  ss.getSheets().forEach(sh => {
+    const name = sh.getName(), nm = name.match(/^(\d{4})\.(\d{2})$/), rows = sh.getLastRow();
+    if ((nm && nm[1] + '-' + nm[2] < cut) || rows < 2 || sh.getLastColumn() < 4) return;
+    const head = sh.getRange(1, 1, 1, 4).getValues()[0];
+    if (String(head[0]).trim() !== '摘要' || String(head[2]).trim() !== '類型') return;
+    sh.getRange(2, 1, rows - 1, 4).getValues().forEach(r => {
+      const c = String(r[2]).trim(), a = Number(r[3]), memo = String(r[0]).trim();
+      if (!(r[1] instanceof Date) || !a) return;
+      const give = !!giveRe && a < 0 && (giveRe.test(memo) || giveRe.test(c));
+      if (!give && cats.indexOf(c) < 0) return;
+      const d = Utilities.formatDate(r[1], tz, 'yyyy-MM-dd'), mo = d.slice(0, 7);
+      if (mo < cut) return;
+      by[mo] = by[mo] || {}; (by[mo][name] = by[mo][name] || []).push(give ? [d, memo, '', Math.round(-a * 100) / 100] : [d, memo, c, Math.round(a * 100) / 100]);
+    });
+  });
+  const out = [];
+  Object.keys(by).forEach(mo => {
+    // 同一個月若出現在多張工作表（例如當月表與已歸檔的月表），取筆數最多的一張，避免重複計算
+    const src = Object.keys(by[mo]).sort((a, b) => by[mo][b].length - by[mo][a].length || (/^\d{4}\.\d{2}$/.test(b) ? 1 : 0) - (/^\d{4}\.\d{2}$/.test(a) ? 1 : 0))[0];
+    const rows = by[mo][src].sort((a, b) => a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0), items = rows.filter(x => x[2]), give = rows.filter(x => !x[2]).map(x => [x[0], x[1], x[3]]), sum = {};
+    items.forEach(x => sum[x[2]] = Math.round(((sum[x[2]] || 0) + x[3]) * 100) / 100);
+    const data = { month: mo, cats: sum, total: Math.round(items.reduce((t, x) => t + x[3], 0) * 100) / 100, items: items, given: Math.round(give.reduce((t, x) => t + x[2], 0) * 100) / 100, give: give }, id = 'fam_' + mo;
+    if (index[id] !== undefined && all[index[id]][4] !== true && all[index[id]][2] === JSON.stringify(data)) return; // 沒變就不寫
+    out.push({ id: id, type: 'fam', data: data, updated_at: Date.now() });
+  });
+  return out;
+}
+
+// 記一筆個人帳（給 iOS 捷徑用：{ token, kind:"txn", amount, cat, type?: 支出|收入, note?, acct?, date? }）
+function txnChange_(body) {
+  const a = numSum_(body.amount); if (a === null || !a) return null;
+  const m = String(body.date || '').match(/\d{4}-\d{2}-\d{2}/), date = m ? m[0] : Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+  const t = String(body.type || '').trim();
+  return { id: 'tx_' + Date.now() + Math.floor(Math.random() * 1000), type: 'txn', updated_at: Date.now(),
+    data: { ledger: 'personal', date: date, type: /收入|^in/i.test(t) ? 'in' : 'out', amount: Math.abs(a), cat: String(body.cat || body.category || '其他').trim(), note: String(body.note || '').trim(), acct: String(body.acct || body.account || '').trim(), src: 'shortcut' } };
+}
+
 function doPost(e) {
   let raw = {}; try { raw = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return out_({ error: 'bad json' }); }
   const body = normBody_(raw);
@@ -86,6 +135,12 @@ function doPost(e) {
     let seq = all.reduce((m, r) => Math.max(m, r[5]), 0);
     const changes = (body.changes || []).slice();
     if (body.kind === 'health') changes.push(healthChange_(body, all, index));
+    if (body.kind === 'txn') { const t = txnChange_(body); if (!t) return out_({ error: 'bad amount' }); changes.push(t); }
+    if (body.kind === 'family') {
+      if (body.sheet) { const m = String(body.sheet).match(/[-\w]{25,}/); if (!m) return out_({ error: 'bad sheet link' }); PropertiesService.getScriptProperties().setProperty('FAMILY_SHEET', m[0]); }
+      if (typeof raw.give === 'string') { try { new RegExp(raw.give); } catch (err) { return out_({ error: 'bad give pattern' }); } PropertiesService.getScriptProperties().setProperty('FAMILY_GIVE', raw.give); }
+      const f = familyChanges_(all, index); if (f.error) return out_(f); f.forEach(c => changes.push(c));
+    }
     // 原樣記錄（除金鑰外）：用來查看捷徑實際送出的內容，再決定如何解析
     if (body.kind === 'debug') { const d = {}; Object.keys(raw).forEach(k => { if (String(k).trim().toLowerCase() !== 'token') d[k] = raw[k]; }); changes.push({ id: 'debug_' + Date.now(), type: 'debug', data: d, updated_at: Date.now() }); }
     for (const ch of changes) {
