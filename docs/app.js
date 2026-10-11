@@ -1,4 +1,4 @@
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,7 +17,7 @@ function put(type, data, id = uid()) {
 }
 const patch = (id, p) => put(DB[id].type, { ...DB[id].data, ...p }, id);
 function del(id) { DB[id] = { ...DB[id], deleted: true, updated_at: Date.now() }; if (!dirty.includes(id)) dirty.push(id); persist(); sync(); render(); }
-const setting = (k, d) => DB['set_' + k]?.data.v ?? d;
+const setting = (k, d) => { const r = DB['set_' + k]; return r && !r.deleted ? r.data.v ?? d : d; };
 const setSetting = (k, v) => { put('setting', { v }, 'set_' + k); };
 
 // ---------- 同步 ----------
@@ -114,7 +114,7 @@ function render() {
 
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
 const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : '');
-const GRIP = '<div class="grip"><span class="grip-h" title="按住拖曳可移動這個區塊" aria-label="拖曳移動區塊">⠿</span><button onclick="blkMove(this,-1)" aria-label="往前移">↑</button><button onclick="blkMove(this,1)" aria-label="往後移">↓</button></div>';
+const GRIP = '<div class="grip"><span class="grip-h" title="按住拖曳可移動這個區塊" aria-label="拖曳移動區塊">⋯</span><button onclick="blkMove(this,-1)" aria-label="往前移">↑</button><button onclick="blkMove(this,1)" aria-label="往後移">↓</button></div>';
 function applyLayout() {
   const v = $('#view'), seen = {}, blocks = []; v.classList.toggle('two', tab === 'home'); document.body.classList.toggle('editing', !!ui.edit); $('#layoutBtn').classList.toggle('on', !!ui.edit);
   [...v.children].forEach((el, i) => {
@@ -126,7 +126,7 @@ function applyLayout() {
   });
   const order = setting('layout_' + pageKey(), []);
   if (order.length) blocks.map((b, i) => [order.indexOf(b.dataset.b) < 0 ? 1e3 + i : order.indexOf(b.dataset.b), b]).sort((a, b) => a[0] - b[0]).forEach(([, b]) => v.appendChild(b));
-  if (ui.edit) v.insertAdjacentHTML('afterbegin', `<div class="editbar full"><span>按住區塊左上角的 ⠿ 可隨時拖曳；這裡另外提供 ↑ ↓ 與恢復預設</span><span><button onclick="layoutReset()">恢復預設</button><button onclick="layoutEdit()">完成</button></span></div>`);
+  if (ui.edit) v.insertAdjacentHTML('afterbegin', `<div class="editbar full"><span>按住區塊左上角的 ⋯ 可隨時拖曳；這裡另外提供 ↑ ↓ 與恢復預設</span><span><button onclick="layoutReset()">恢復預設</button><button onclick="layoutEdit()">完成</button></span></div>`);
 }
 const saveLayout = () => setSetting('layout_' + pageKey(), [...document.querySelectorAll('#view > .blk')].map(b => b.dataset.b));
 window.layoutEdit = () => { ui.edit = !ui.edit; render(); };
@@ -233,7 +233,18 @@ function weekLog(dates) {
 }
 
 // ---------- 運動 ----------
-window.fitAdd = () => { const m = +val('fm'); if (!m) return; put('workout', { date: val('fd') || today(), kind: val('fk'), min: m, km: +val('fkm') || 0, note: val('fn') }); render(); };
+// 運動消耗估算：MET × 體重(kg) × 小時。MET 取自常見活動的代謝當量概略值，強度再乘上係數；只是估計值
+const MET = { '居家徒手': 3.8, '瑜珈': 3, '重訓': 5, '飛輪': 8.5, '跑步': 9.8, '走路': 3.5, '游泳': 7, '單車': 7.5, '球類': 6.5, '其他': 4 }, INTENS = { low: ['輕鬆', .8], mid: ['中等', 1], high: ['激烈', 1.25] };
+const bodyKg = () => +setting('weight_kg', 0) || 0;
+const wkKcal = x => { const kg = bodyKg(); return kg && x.min ? Math.round((MET[x.kind] || 4) * (INTENS[x.intensity] || INTENS.mid)[1] * kg * x.min / 60) : 0; };
+const linkify = t => esc(t || '').replace(/https?:\/\/[^\s<]+/g, u => `<a class="wl" href="${u}" target="_blank" rel="noopener noreferrer">影片／連結</a>`);
+const fitForm = (x, pre) => `<div class="row"><input type="date" id="${pre}d" value="${x.date || today()}"><select id="${pre}k">${Object.keys(MET).map(k => `<option ${k === x.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
+  <div class="row"><input id="${pre}m" type="number" inputmode="numeric" placeholder="分鐘" value="${x.min || ''}"><select id="${pre}i" aria-label="強度">${Object.entries(INTENS).map(([k, [n]]) => `<option value="${k}" ${k === (x.intensity || 'mid') ? 'selected' : ''}>${n}</option>`).join('')}</select><input id="${pre}km" type="number" inputmode="decimal" placeholder="公里（選填）" value="${x.km || ''}"></div><input id="${pre}n" placeholder="備註或影片連結（選填）" value="${esc(x.note || '')}">`;
+const fitRead = pre => ({ date: val(pre + 'd') || today(), kind: val(pre + 'k'), min: +val(pre + 'm') || 0, intensity: val(pre + 'i'), km: +val(pre + 'km') || 0, note: val(pre + 'n') });
+window.fitAdd = () => { const d = fitRead('f'); if (!d.min) return; put('workout', d); render(); };
+window.fitEdit = id => { ui.editFit = id; render(); };
+window.fitSave = id => { const d = fitRead('e'); if (!d.min) return; patch(id, d); ui.editFit = null; render(); };
+window.fitWeight = () => { const g = prompt('體重（公斤），用來估算運動消耗的熱量', bodyKg() || ''); if (g && +g > 0) { setSetting('weight_kg', +g); render(); } };
 window.fitGoal = () => { const g = prompt('每週運動目標（分鐘）', setting('goal', 150)); if (g) { setSetting('goal', +g); render(); } };
 function fitStats() {
   const w = all('workout'), dates = weekDates(), man = {}; w.forEach(x => man[x.date] = (man[x.date] || 0) + x.min);
@@ -243,15 +254,18 @@ function fitStats() {
   return { w, dates, dayMin, min: Math.round(dates.reduce((a, x) => a + dayMin(x), 0)), km: wk.reduce((a, x) => a + x.km, 0), n: wk.length, streak };
 }
 function fit() {
-  const s = fitStats(), goal = setting('goal', 150), D = s.dates, t = today(), sum = k => D.reduce((a, d) => a + hv(d, k), 0), days = D.filter(d => hv(d, 'steps')).length;
-  return hkNote() + `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${Math.min(100, s.min / goal * 100)}%"></i></div>
-    <div class="grid" style="margin-top:12px"><div>${num(s.min, '分鐘')}<div class="mut">運動時間</div></div><div>${num(sum('active_kcal'), 'kcal')}<div class="mut">活動消耗</div></div><div>${num(days ? sum('steps') / days : 0, '步')}<div class="mut">日均步數</div></div><div>${num(s.streak, '天')}<div class="mut">連續運動</div></div></div></div>
+  const s = fitStats(), goal = setting('goal', 150), D = s.dates, t = today(), kg = bodyKg(), hasHk = D.some(d => hk(d));
+  const wk = s.w.filter(x => x.date >= D[0] && x.date <= D[6]), kcal = wk.reduce((a, x) => a + wkKcal(x), 0);
+  const row = x => ui.editFit === x.id
+    ? `<div class="item" style="display:block">${fitForm(x, 'e')}<div class="row"><button class="b" onclick="fitSave('${x.id}')">儲存</button><button class="b g" onclick="ui.editFit=null;render()">取消</button></div></div>`
+    : `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min} 分${x.km ? ' · ' + x.km + ' km' : ''}${wkKcal(x) ? ` · 約 ${wkKcal(x)} kcal` : ''} <span class="mut">${(INTENS[x.intensity] || INTENS.mid)[0]}${x.note ? ' · ' + linkify(x.note) : ''}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="fitEdit('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`;
+  return `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${Math.min(100, s.min / goal * 100)}%"></i></div>
+    <div class="grid" style="margin-top:12px"><div>${num(s.min, '分鐘')}<div class="mut">運動時間</div></div><div>${num(kcal, 'kcal')}<div class="mut">運動消耗（估算）</div></div><div>${num(wk.length, '次')}<div class="mut">運動次數</div></div><div>${num(s.streak, '天')}<div class="mut">連續運動</div></div></div>
+    <p class="mut" style="margin:10px 0 0">${kg ? `以體重 <a class="wl" onclick="fitWeight()">${kg} kg</a> 估算` : `<a class="wl" onclick="fitWeight()">設定體重</a>後才能估算消耗的熱量`}，數字是依運動種類、強度、時間推估的概略值。</p></div>
+  <div class="card"><h2>記錄運動</h2>${fitForm({}, 'f')}<button class="b" onclick="fitAdd()">記錄</button></div>
   <div class="card"><h2>每日運動分鐘</h2>${bars(D, D.map(s.dayMin))}</div>
-  <div class="card"><h2>今日</h2><div class="grid"><div>${num(hv(t, 'steps'), '步')}<div class="mut">步數</div></div><div>${num(s.dayMin(t), '分')}<div class="mut">運動時間</div></div><div>${num(hv(t, 'active_kcal'), 'kcal')}<div class="mut">活動消耗</div></div><div>${num(hv(t, 'distance_km'), 'km')}<div class="mut">步行＋跑步距離</div></div>${hv(t, 'sleep_h') ? `<div>${num(hv(t, 'sleep_h'), '小時')}<div class="mut">睡眠</div></div>` : ''}${hv(t, 'weight_kg') ? `<div>${num(hv(t, 'weight_kg'), 'kg')}<div class="mut">體重</div></div>` : ''}</div></div>
-  <div class="card"><h2>每日步數</h2>${bars(D, D.map(d => hv(d, 'steps')))}</div>
-  <details class="card"><summary style="cursor:pointer"><b class="serif">手動補記運動</b></summary><div class="row" style="margin-top:10px"><input type="date" id="fd" value="${today()}"><select id="fk">${['跑步', '重訓', '游泳', '單車', '瑜珈', '走路', '球類', '其他'].map(k => `<option>${k}</option>`).join('')}</select></div>
-  <div class="row"><input id="fm" type="number" inputmode="numeric" placeholder="分鐘"><input id="fkm" type="number" inputmode="decimal" placeholder="公里（選填）"></div><input id="fn" placeholder="備註（選填）"><button class="b" onclick="fitAdd()">記錄</button></details>
-  ${s.w.length ? `<div class="card"><h2>手動紀錄</h2>${s.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30).map(x => `<div class="item"><span>${x.date.slice(5)} <b>${esc(x.kind)}</b> ${x.min}分${x.km ? ' · ' + x.km + 'km' : ''} <span class="mut">${esc(x.note)}</span></span><button class="x" onclick="del('${x.id}')">✕</button></div>`).join('')}</div>` : ''}`;
+  <div class="card"><h2>運動紀錄</h2>${s.w.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40).map(row).join('') || '<p class="empty">還沒有紀錄</p>'}</div>
+  ${hasHk ? hkNote() + `<div class="card"><h2>Apple 健康 · 今日</h2><div class="grid"><div>${num(hv(t, 'steps'), '步')}<div class="mut">步數</div></div><div>${num(hv(t, 'distance_km'), 'km')}<div class="mut">步行＋跑步距離</div></div></div></div><div class="card"><h2>每日步數</h2>${bars(D, D.map(d => hv(d, 'steps')))}</div>` : ''}`;
 }
 
 // ---------- 財務（家庭／個人兩本帳） ----------
