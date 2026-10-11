@@ -1,4 +1,4 @@
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.20.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -306,9 +306,12 @@ function fin() {
   // 整年檢視：預算乘上該年有記帳的月數
   const yms = [...new Set(t.map(x => month(x.date)))].sort(), nM = isY ? Math.max(1, yms.length) : 1, budget = bud * nM, B = {}; Object.keys(B1).forEach(c => B[c] = B1[c] * nM);
   const years = [...new Set(all('txn').map(x => x.date.slice(0, 4)))].sort().reverse();
+  const allMs = [...new Set([...all('txn').map(x => month(x.date)), month(today()), ...(isY ? [] : [m])])].sort().reverse();
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
   const cats = [...new Set([...Object.keys(by), ...Object.keys(B)])].map(c => [c, by[c] || 0]).sort((a, b) => b[1] - a[1]);
   const accts = [...new Set(all('txn').map(x => x.acct).filter(Boolean))];
+  const byIn = {}; t.filter(x => x.type === 'in').forEach(x => byIn[x.cat] = (byIn[x.cat] || 0) + x.amount);
+  const incs = Object.entries(byIn).sort((a, b) => b[1] - a[1]);
   // 分析：公司代墊款是先墊後還，計算實際收支與儲蓄率時排除
   const isAdv = x => /代墊/.test(x.cat), rOut = t.filter(x => x.type === 'out' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), rInc = t.filter(x => x.type === 'in' && !isAdv(x)).reduce((a, x) => a + x.amount, 0);
   const ms = isY ? yms.slice() : []; if (!isY) for (let k = m, i = 0; i < 6; i++, k = prevMonth(k)) ms.unshift(k);
@@ -324,7 +327,7 @@ function fin() {
     over.length ? `超出預算 ${over.length} 類：${over.slice(0, 4).map(c => `${esc(c)}（+${money(by[c] - B[c])}）`).join('、')}` : (Object.keys(B).length && rOut ? '所有分類都在預算內' : ''),
     up && up[1] > 0 && Object.keys(pb).length ? `比${isY ? '前一年' : '上個月'}增加最多的是「${esc(up[0])}」，多了 ${money(up[1])}` : ''
   ]) + advice('pfin') : '';
-  return pfinSeg() + `<div class="card" data-b="sum">${isY ? `<select onchange="finMonth(this.value)">${years.map(v => `<option value="${v}" ${v === m ? 'selected' : ''}>${v} 整年</option>`).join('')}</select><p class="mut" style="margin:6px 0 0">${nM} 個月有記帳・<a class="wl" onclick="finMonth('${m === today().slice(0, 4) ? month(today()) : yms[yms.length - 1] || month(today())}')">回到單月</a></p>` : `<input type="month" value="${m}" onchange="finMonth(this.value)"><p class="mut" style="margin:6px 0 0">${years.map(v => `<a class="wl" onclick="finMonth('${v}')">看 ${v} 整年</a>`).join('・')}</p>`}
+  return pfinSeg() + `<div class="card" data-b="sum"><select onchange="finMonth(this.value)">${years.map(v => `<option value="${v}" ${v === m ? 'selected' : ''}>${v} 整年</option>`).join('')}${allMs.map(k => `<option value="${k}" ${k === m ? 'selected' : ''}>${k.replace('-', ' 年 ')} 月</option>`).join('')}</select>${isY ? `<p class="mut" style="margin:6px 0 0">${nM} 個月有記帳</p>` : ''}
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
   <div class="mut"><a class="wl" onclick="finBudget()">${isY ? `${nM} 個月總預算` : '總預算'} ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
@@ -332,6 +335,7 @@ function fin() {
   <div class="row"><input id="ft_a" type="number" inputmode="decimal" placeholder="金額"><select id="ft_c">${PFIN.out.map(c => `<option>${c}</option>`).join('')}</select></div>
   <div class="row"><input id="ft_k" list="ft_kl" placeholder="帳戶（選填）"><datalist id="ft_kl">${accts.map(a => `<option value="${esc(a)}">`).join('')}</datalist><input id="ft_n" placeholder="備註（選填）"></div><button class="b" onclick="finAdd()">記帳</button></div>
   ${cats.length ? `<div class="card" data-b="cats"><h2>支出分類</h2>${cats.map(([c, v]) => { const g = B[c]; return `<div class="mut" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(c)} ${money(v)}${g ? '' : `（${out ? Math.round(v / out * 100) : 0}%）`}</span><a class="wl" onclick="finCatBudget('${esc(c)}')">${g ? `預算 ${money(g)}${v > g ? '・超出 ' + money(v - g) : ''}` : '設預算'}</a></div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.min(100, g ? v / g * 100 : out ? v / out * 100 : 0)}%;${g && v > g ? 'background:var(--bad)' : ''}"></i></div>`; }).join('')}</div>` : ''}
+  ${incs.length ? `<div class="card" data-b="incs"><h2>收入分類</h2>${incs.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${pct(v, inc)}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.min(100, inc ? v / inc * 100 : 0)}%;background:var(--ok)"></i></div>`).join('')}</div>` : ''}
   <div class="card" data-b="list"><h2>明細</h2>${t.sort((a, b) => b.date.localeCompare(a.date)).map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">尚無帳目</p>'}</div>` + analysis;
 }
 
