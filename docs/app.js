@@ -1,4 +1,4 @@
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -277,31 +277,63 @@ function fit() {
   ${hasHk ? hkNote() + `<div class="card"><h2>Apple 健康 · 今日</h2><div class="grid"><div>${num(hv(t, 'steps'), '步')}<div class="mut">步數</div></div><div>${num(hv(t, 'distance_km'), 'km')}<div class="mut">步行＋跑步距離</div></div></div></div><div class="card"><h2>每日步數</h2>${bars(D, D.map(d => hv(d, 'steps')))}</div>` : ''}`;
 }
 
-// ---------- 財務（家庭／個人兩本帳） ----------
-const LEDGER = {
-  family: { out: ['房租房貸', '水電瓦斯', '食材日用', '孝親', '保險', '教育', '交通', '其他'], inc: ['家用收入', '其他'], budget: 'budget_family', def: 40000 },
-  personal: { out: ['餐飲', '交通', '居住', '購物', '娛樂', '醫療', '學習', '其他'], inc: ['薪資', '獎金', '投資', '其他'], budget: 'budget', def: 20000 }
+// ---------- 個人財務（手動記帳；分類沿用自己的記帳表，各分類可設預算） ----------
+const PFIN = {
+  out: ['個人-外食', '個人-日用品', '個人-保養品', '個人-化妝品', '個人-髮衣鞋包帽', '個人交通-大眾交通', '個人交通-機車', '個人交通-計程車', '交際-送禮請客', '交際-家庭送禮', '家庭開支-食材費', '家庭開支-家庭用品', '家庭開支-貓咪費用', '醫療', '學習', '保險通訊訂閱', '投資', '儲蓄', '公司代墊款', '其他'],
+  inc: ['薪水', '公司代墊回款', '其他'], def: 20000
 };
-const LATER = t => `<p class="mut" style="margin:0 2px 12px">${t}</p>`;
-const curLedger = () => tab === 'ffin' ? 'family' : 'personal';
-const txns = (L, m) => all('txn').filter(x => (x.ledger || 'personal') === L && month(x.date) === m);
-const finSum = (L, m = month(today())) => { const t = txns(L, m); return { inc: t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), out: t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), budget: setting(LEDGER[L].budget, LEDGER[L].def) }; };
-window.finAdd = () => { const a = +val('ft_a'); if (!a) return; put('txn', { ledger: curLedger(), date: val('ft_d') || today(), type: val('ft_t'), amount: a, cat: val('ft_c'), note: val('ft_n') }); render(); };
-window.finType = () => { const C = LEDGER[curLedger()]; $('#ft_c').innerHTML = ($('#ft_t').value === 'out' ? C.out : C.inc).map(c => `<option>${c}</option>`).join(''); };
-window.finBudget = () => { const C = LEDGER[curLedger()], g = prompt('每月預算', setting(C.budget, C.def)); if (g) { setSetting(C.budget, +g); render(); } };
+const txns = m => all('txn').filter(x => (x.ledger || 'personal') === 'personal' && month(x.date) === m);
+const finSum = (m = month(today())) => { const t = txns(m); return { inc: t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), out: t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), budget: setting('budget', PFIN.def) }; };
+window.finAdd = () => { const a = +val('ft_a'); if (!a) return; put('txn', { ledger: 'personal', date: val('ft_d') || today(), type: val('ft_t'), amount: a, cat: val('ft_c'), acct: val('ft_k'), note: val('ft_n') }); render(); };
+window.finType = () => { $('#ft_c').innerHTML = ($('#ft_t').value === 'out' ? PFIN.out : PFIN.inc).map(c => `<option>${c}</option>`).join(''); };
+window.finBudget = () => { const g = prompt('每月總預算', setting('budget', PFIN.def)); if (g) { setSetting('budget', +g); render(); } };
+window.finCatBudget = c => { const B = setting('catbudget', {}), g = prompt(`「${c}」每月預算（留空表示不設）`, B[c] ?? ''); if (g === null) return; const n = { ...B }; if (g.trim() && +g > 0) n[c] = +g; else delete n[c]; setSetting('catbudget', n); render(); };
 window.finMonth = d => { ui.m = d; render(); };
 function fin() {
-  const L = curLedger(), C = LEDGER[L], m = ui.m || month(today()), t = txns(L, m), { inc, out, budget } = finSum(L, m), by = {};
+  const m = ui.m || month(today()), t = txns(m), { inc, out, budget } = finSum(m), by = {}, B = setting('catbudget', {});
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
-  const cats = Object.entries(by).sort((a, b) => b[1] - a[1]);
-  return (L === 'family' ? LATER('家庭開支彙整的表格確定後，這頁會改成對應的欄位與彙總。') : '') + `<div class="card"><input type="month" value="${m}" onchange="finMonth(this.value)">
+  const cats = [...new Set([...Object.keys(by), ...Object.keys(B)])].map(c => [c, by[c] || 0]).sort((a, b) => b[1] - a[1]);
+  const accts = [...new Set(all('txn').map(x => x.acct).filter(Boolean))];
+  return `<div class="card" data-b="sum"><input type="month" value="${m}" onchange="finMonth(this.value)">
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
-  <div class="mut"><a class="wl" onclick="finBudget()">預算 ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
-  <div class="card"><h2>新增帳目</h2><div class="row"><select id="ft_t" onchange="finType()"><option value="out">支出</option><option value="in">收入</option></select><input type="date" id="ft_d" value="${today()}"></div>
-  <div class="row"><input id="ft_a" type="number" inputmode="decimal" placeholder="金額"><select id="ft_c">${C.out.map(c => `<option>${c}</option>`).join('')}</select></div><input id="ft_n" placeholder="備註（選填）"><button class="b" onclick="finAdd()">記帳</button></div>
-  ${cats.length ? `<div class="card"><h2>支出分類</h2>${cats.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${Math.round(v / out * 100)}%）</div><div class="bar" style="margin-bottom:6px"><i style="width:${v / out * 100}%"></i></div>`).join('')}</div>` : ''}
-  <div class="card"><h2>明細</h2>${t.sort((a, b) => b.date.localeCompare(a.date)).map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc(x.note)}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">本月尚無帳目</p>'}</div>`;
+  <div class="mut"><a class="wl" onclick="finBudget()">總預算 ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
+  <div class="card" data-b="add"><h2>新增帳目</h2><div class="row"><select id="ft_t" onchange="finType()"><option value="out">支出</option><option value="in">收入</option></select><input type="date" id="ft_d" value="${today()}"></div>
+  <div class="row"><input id="ft_a" type="number" inputmode="decimal" placeholder="金額"><select id="ft_c">${PFIN.out.map(c => `<option>${c}</option>`).join('')}</select></div>
+  <div class="row"><input id="ft_k" list="ft_kl" placeholder="帳戶（選填）"><datalist id="ft_kl">${accts.map(a => `<option value="${esc(a)}">`).join('')}</datalist><input id="ft_n" placeholder="備註（選填）"></div><button class="b" onclick="finAdd()">記帳</button></div>
+  ${cats.length ? `<div class="card" data-b="cats"><h2>支出分類</h2>${cats.map(([c, v]) => { const g = B[c]; return `<div class="mut" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(c)} ${money(v)}${g ? '' : `（${out ? Math.round(v / out * 100) : 0}%）`}</span><a class="wl" onclick="finCatBudget('${esc(c)}')">${g ? `預算 ${money(g)}${v > g ? '・超出 ' + money(v - g) : ''}` : '設預算'}</a></div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.min(100, g ? v / g * 100 : out ? v / out * 100 : 0)}%;${g && v > g ? 'background:var(--bad)' : ''}"></i></div>`; }).join('')}</div>` : ''}
+  <div class="card" data-b="list"><h2>明細</h2>${t.sort((a, b) => b.date.localeCompare(a.date)).map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">本月尚無帳目</p>'}</div>`;
+}
+
+// ---------- 家庭財務（唯讀：後端從伴侶的記帳試算表讀出家庭類別，每月彙整成一筆 fam 紀錄） ----------
+const famAll = () => all('fam').sort((a, b) => a.month.localeCompare(b.month));
+const famTotal = (m = month(today())) => (famAll().find(x => x.month === m) || {}).total || 0;
+let famBusy = false;
+window.famRefresh = async link => {
+  if (famBusy || !cfg().token) return; famBusy = true; ui.famMsg = '讀取中…'; if (tab === 'ffin') render();
+  try {
+    const r = await api('POST', link ? { kind: 'family', sheet: link } : { kind: 'family' }), j = await r.json();
+    ui.famMsg = j.error === 'no family sheet' ? '' : j.error === 'bad sheet link' ? '這不像是 Google 試算表的連結。' : j.error === 'cannot open family sheet' ? '打不開這份試算表，請確認已與你的 Google 帳號共用，或開啟「知道連結的人可檢視」。' : j.error ? '讀取失敗，稍後再試。' : '';
+    if (!j.error) { LS('lh_famAt', Date.now()); await sync(); }
+  } catch (e) { ui.famMsg = '離線中，連上網路後再試。'; }
+  famBusy = false; if (tab === 'ffin') render();
+};
+window.famLink = () => { const v = val('fam_l') || prompt('貼上記帳試算表的連結'); if (v) famRefresh(v); };
+window.famMonth = m => { ui.fm = m; render(); };
+function ffin() {
+  const F = famAll(), msg = ui.famMsg ? `<p class="mut" style="margin:0 2px 12px">${esc(ui.famMsg)}</p>` : '';
+  if (cfg().token && !famBusy && Date.now() - (LS('lh_famAt') || 0) > 30 * 6e4) { LS('lh_famAt', Date.now()); setTimeout(() => famRefresh(), 0); } // 每 30 分鐘最多向來源試算表重讀一次
+  if (!F.length) return msg + `<div class="card" data-b="setup"><h2>連結家庭記帳表</h2><p class="mut" style="margin:0 0 8px">貼上伴侶記帳試算表的連結，這頁會顯示其中的家庭類別彙總。連結只存在你自己的後端，不會出現在公開的程式碼裡。</p><input id="fam_l" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="b" onclick="famLink()">連結並讀取</button></div>`;
+  const cur = F.find(x => x.month === ui.fm) || F.find(x => x.month === month(today())) || F[F.length - 1], i = F.indexOf(cur), prev = F[i - 1];
+  const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), last = F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), y = cur.month.slice(0, 4), yr = F.filter(x => x.month.startsWith(y));
+  return msg + `<div class="card" data-b="sum"><select onchange="famMonth(this.value)">${F.slice().reverse().map(x => `<option value="${x.month}" ${x === cur ? 'selected' : ''}>${x.month.replace('-', ' 年 ')} 月</option>`).join('')}</select>
+  <div style="margin-top:10px"><div class="eyebrow">家庭支出</div><div class="big">${money(cur.total)}</div></div>
+  ${cur.given ? `<p style="margin:8px 0 0">我給家庭 <b>${money(cur.given)}</b></p>` : ''}<p class="mut" style="margin:6px 0 0">${prev ? `上月 ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
+  <div class="card" data-b="cats"><h2>分類</h2>${cats.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${cur.total > 0 ? Math.round(v / cur.total * 100) : 0}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.max(0, Math.min(100, cur.total > 0 ? v / cur.total * 100 : 0))}%"></i></div>`).join('')}</div>
+  <div class="card" data-b="trend"><h2>近 ${last.length} 個月</h2><div class="bars" style="grid-template-columns:repeat(${last.length},1fr)">${last.map(x => `<div class="${x === cur ? 'td' : ''}" onclick="famMonth('${x.month}')" style="cursor:pointer"><span>${Math.round(x.total).toLocaleString()}</span><i style="height:${Math.max(0, x.total) / mx * 72}%"></i><small>${+x.month.slice(5)} 月</small></div>`).join('')}</div></div>
+  ${yr.some(x => x.given) ? `<div class="card" data-b="give"><h2>${y} 年我給家庭</h2>${yr.map(x => `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">家庭支出 ${money(x.total)}</span></span><b class="${x.given ? '' : 'mut'}">${x.given ? money(x.given) : '未記錄'}</b></div>`).join('')}<div class="item"><span><b>合計</b> <span class="mut">家庭支出 ${money(yr.reduce((a, x) => a + x.total, 0))}</span></span><b>${money(yr.reduce((a, x) => a + (x.given || 0), 0))}</b></div></div>` : ''}
+  <div class="card" data-b="list"><h2>明細</h2>${cur.items.map(x => `<div class="item"><span>${x[0].slice(5)} ${esc(x[1])} <span class="mut">${esc(x[2])}</span></span><b>${money(x[3])}</b></div>`).join('')}</div>
+  <p class="mut" style="margin:0 2px 12px">資料來自伴侶的記帳試算表（唯讀）${at ? '・上次讀取 ' + new Date(at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}・<a class="wl" onclick="famRefresh()">重新讀取</a>・<a class="wl" onclick="famLink()">更換來源</a></p>`;
 }
 
 // ---------- 每週習慣建立（原子習慣：身分 → 提示 → 兩分鐘版本 → 打勾即投票） ----------
@@ -476,13 +508,13 @@ function weekStrip(days) {
   return `<div class="card week full" data-b="week">${weekDates().map((d, i) => `<div class="${d === today() ? 'today' : ''}"><small>${WD[i]}</small><b>${+d.slice(8)}</b><i class="${days.has(d) ? 'on' : ''}"></i></div>`).join('')}</div>`;
 }
 function home() {
-  const f = fitStats(), P = finSum('personal'), F = finSum('family'), goalMin = setting('goal', 150);
+  const f = fitStats(), P = finSum(), goalMin = setting('goal', 150);
   const todo = todosOpen();
   const rd = all('book').filter(b => b.status === 'reading'), hs = all('habit'), hToday = hs.filter(h => hDone(h.id, today())).length;
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(famTotal())}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date), ...all('health').filter(x => x.exercise_min > 0).map(x => x.date)]);
   return `<div class="card hero full" data-b="hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
@@ -497,7 +529,7 @@ function home() {
   <div class="tiles full" data-b="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, n]) => `<div class="tile" onclick="go('${k}')">${COVER[k]}<div class="tl"><div class="tn">${ICON[k]}${n}</div><div class="mut">${stat[k]}</div></div></div>`).join('')}</div>
   <div class="card quote full" data-b="quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>`;
 }
-const VIEWS = { home, bujo, habit, diet, fit, ffin: fin, pfin: fin, know, goal };
+const VIEWS = { home, bujo, habit, diet, fit, ffin, pfin: fin, know, goal };
 applyTheme(localStorage.getItem('lh_theme') || 'light');
 render(); sync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
