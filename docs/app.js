@@ -1,4 +1,4 @@
-const APP_VERSION = '1.24.3';
+const APP_VERSION = '1.24.4';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -331,18 +331,24 @@ window.finCatBudget = c => { const B = setting('catbudget', {}), g = prompt(`「
 window.finMonth = d => { ui.m = d; render(); };
 window.finPick = () => finMonth(pKey($('#finPick_y').value, $('#finPick_m').value));
 // ---------- 公司代墊（個人財務的分頁）：分類名稱含「代墊」的帳。支出＝我先墊的錢，收入＝公司回款 ----------
-// 手上的代墊款：以某一天的金額為基準（setting advbase），之後的代墊支出會減少、回款會增加
-window.advBase = () => { const b = setting('advbase', { amount: 0, date: today() }), a = prompt('目前手上的代墊款金額', b.amount); if (a === null) return; const d = prompt('這個金額是哪一天的（yyyy-mm-dd）', today()); if (d === null) return; setSetting('advbase', { amount: +a || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(d.trim()) ? d.trim() : today() }); render(); };
+// 手上應有的代墊款＝起算日以來（公司撥款與回款 − 代墊支出）＋手動調整。手動調整用來補記帳檔裡沒有的收付（例如同事直接匯還）
+window.advAdjAdd = () => { const a = prompt('調整金額（收到錢填正數，付出去填負數）'); if (a === null || !+a) return; const n = prompt('說明（例：同事匯還某筆代墊）', ''); if (n === null) return; const d = prompt('日期（yyyy-mm-dd）', today()); if (d === null) return; setSetting('advadj', [...setting('advadj', []), { amount: +a, note: n.trim(), date: /^\d{4}-\d{2}-\d{2}$/.test(d.trim()) ? d.trim() : today() }]); render(); };
+window.advAdjDel = i => { if (!confirm('刪除這筆調整？')) return; setSetting('advadj', setting('advadj', []).filter((_, k) => k !== i)); render(); };
 window.advStart = () => { const d = prompt('代墊從哪一天開始算（yyyy-mm-dd；清空表示全部都算）', setting('advstart', '')); if (d === null) return; const v = d.trim(); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return alert('日期格式請用 yyyy-mm-dd'); setSetting('advstart', v); render(); };
 window.advPick = () => { ui.am = pKey($('#advPick_y').value, $('#advPick_m').value); render(); };
 function advView() {
   const start = setting('advstart', ''), A = all('txn').filter(x => (x.ledger || 'personal') === 'personal' && /代墊/.test(x.cat || '') && (!start || x.date >= start)), key = ui.am || today().slice(0, 4), f = pIn(key), T = A.filter(x => f(x.date)).sort((a, b) => b.date.localeCompare(a.date));
   const sum = (L, ty) => L.filter(x => x.type === ty).reduce((a, x) => a + x.amount, 0), out = sum(T, 'out'), back = sum(T, 'in'), years = [...new Set(A.map(x => x.date.slice(0, 4)))].sort().reverse();
-  const base = setting('advbase', null), after = base ? A.filter(x => x.date > base.date) : [], hand = base ? base.amount - sum(after, 'out') + sum(after, 'in') : null;
+  const ADJ = setting('advadj', []).map((x, i) => ({ ...x, i })).filter(x => !start || x.date >= start), adj = ADJ.reduce((a, x) => a + x.amount, 0), lastDate = A.reduce((m, x) => x.date > m ? x.date : m, ''), sg = v => (v >= 0 ? '+' : '-') + money(Math.abs(v));
   const ms = key === 'all' ? years.slice().reverse() : [...new Set(T.map(x => month(x.date)))].sort(), grp = k => A.filter(x => x.date.startsWith(k));
   const allOut = sum(A, 'out'), allBack = sum(A, 'in'), noNote = T.filter(x => x.type === 'out' && !x.note).length;
-  return `<div class="card" data-b="hand"><div class="eyebrow">目前手上的代墊款</div><div class="big">${hand === null ? '尚未設定' : money(hand)}</div>
-  <p class="mut" style="margin:6px 0 0">${base ? `以 ${esc(base.date)} 的 ${money(base.amount)} 為基準；之後代墊支出 ${money(sum(after, 'out'))}、回款 ${money(sum(after, 'in'))}（${after.length} 筆）。` : '設定目前手上的金額後，之後記的代墊支出會自動扣掉、回款會加回來。'}<a class="wl" onclick="advBase()">${base ? '修改基準' : '設定'}</a></p></div>
+  const hand = allBack - allOut + adj;
+  return `<div class="card" data-b="hand"><div class="eyebrow">目前手上應有的代墊款</div><div class="big ${hand < 0 ? 'bad' : ''}">${money(hand)}</div>
+  <p class="mut" style="margin:6px 0 8px">${hand >= 0 ? '公司給你的錢比你墊出去的多，這是你手上應該還留著的金額。' : '你墊出去的比公司給的多，這是公司還欠你的金額。'}記帳資料到 ${esc(lastDate || '—')}，之後的收付還沒算進來。</p>
+  <div class="item"><span>公司撥款與回款 <span class="mut">${start ? `自 ${esc(start)} 起` : '全部'}</span></span><b class="ok">+${money(allBack)}</b></div>
+  <div class="item"><span>代墊支出</span><b class="bad">-${money(allOut)}</b></div>
+  ${ADJ.map(x => `<div class="item"><span>調整：${esc(x.note || '未註明')} <span class="mut">${esc(x.date)}</span></span><span><b class="${x.amount >= 0 ? 'ok' : 'bad'}">${sg(x.amount)}</b><button class="x" onclick="advAdjDel(${x.i})">✕</button></span></div>`).join('')}
+  <p class="mut" style="margin:8px 0 0"><a class="wl" onclick="advAdjAdd()">新增調整</a>（記帳檔沒記到的收付，例如同事直接匯還）</p></div>
   <div class="card" data-b="sum">${pSelect(key, years, 'advPick')}
   <div class="grid" style="margin-top:10px"><div><div class="eyebrow">${pLabel(key)}代墊支出</div><div class="big bad">${money(out)}</div></div><div><div class="eyebrow">公司回款</div><div class="big ok">${money(back)}</div></div></div>
   <p style="margin:10px 0 0">${out - back > 0 ? `這段期間還有 <b class="bad">${money(out - back)}</b> 沒回來` : out - back < 0 ? `這段期間回款比支出多 <b class="ok">${money(back - out)}</b>（含之前墊的）` : '這段期間支出與回款相等'}</p>
@@ -353,7 +359,7 @@ function advView() {
     ms.length > 1 && key !== 'all' ? `平均每月代墊 <b>${money(out / ms.length)}</b>` : '',
     noNote ? `有 ${noNote} 筆代墊支出沒有備註，報帳時可能需要補上用途` : ''
   ])}
-  <div class="card" data-b="list"><details><summary class="sum2">明細 <span class="mut">${T.length} 筆・點一下展開</span></summary>${T.map(x => `<div class="item"><span>${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b></div>`).join('') || '<p class="empty">這段期間沒有代墊紀錄</p>'}</details></div>
+  <div class="card" data-b="list"><details ${pSingle(key) ? 'open' : ''}><summary class="sum2">${pLabel(key)}明細 <span class="mut">${T.length} 筆・用上方的年份、月份選單切換</span></summary>${T.map(x => `<div class="item"><span>${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b></div>`).join('') || '<p class="empty">這段期間沒有代墊紀錄</p>'}</details></div>
   <p class="mut" style="margin:0 2px 12px">資料取自記帳裡分類名稱含「代墊」的帳目${start ? `，只計算 ${esc(start)} 之後的` : ''}。<a class="wl" onclick="advStart()">${start ? '修改起算日' : '設定起算日'}</a></p>`;
 }
 const pfinSeg = () => seg('pfin', [['led', '收支'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
