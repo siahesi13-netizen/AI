@@ -109,4 +109,3 @@ dialog::backdrop{background:rgba(40,30,20,.35)}
 .bars div{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:10.5px;color:var(--mut);min-width:0}
 .bars span{margin-bottom:3px;white-space:nowrap}.bars small{margin-top:5px;font-size:10.5px}
 .bars i{display:block;width:62%;max-width:28px;background:var(--clay);border-radius:5px 5px 2px 2px;min-height:2px}.bars .td i{background:var(--cocoa)}.bars .td small{color:var(--tx);font-weight:700}
-.mealpv{display:block;max-width:100%;max-height:220px;border-radius:10px;margin:6px 0}.mealpv[hidden]{display:none}
