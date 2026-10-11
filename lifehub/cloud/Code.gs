@@ -77,7 +77,7 @@ function nutrition_(body) {
 // 來源試算表的 ID 只存在「指令碼屬性」FAMILY_SHEET（由前端貼連結設定），不寫進程式碼。類別可用 FAMILY_CATS 覆寫（逗號分隔）。
 // 明細工作表的格式：第一列為 摘要／日期／類型／支出…；只讀最近 14 個月。
 // FAMILY_GIVE（正規表示式，選填）：摘要或類型符合、且金額為負的列，視為「我給家庭帳戶的錢」，另外列在 give。
-const FAM_CATS = ['外食費-家庭', '貓費用', '日用品費-家庭', '交通費-家庭', '租金水電', '電信費'];
+const FAM_CATS = ['外食費-家庭', '貓費用', '日用品費-家庭', '交通費-家庭', '租金水電', '電信費', '食材費', '伙食費-家庭'];
 function familyChanges_(all, index) {
   const P = PropertiesService.getScriptProperties(), sid = P.getProperty('FAMILY_SHEET');
   if (!sid) return { error: 'no family sheet' };
