@@ -1,4 +1,4 @@
-const APP_VERSION = '1.23.1';
+const APP_VERSION = '1.23.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -418,14 +418,17 @@ function invest() {
 const famAll = () => all('fam').sort((a, b) => a.month.localeCompare(b.month));
 // 結算用：把我自己記帳裡「家庭開支-」的支出併進來。
 // 與伴侶帳上「我給家庭」日期相近（±4 天）且金額相近（±25%）的那筆是轉帳，不算支出（錢已由伴侶花在家庭開支上）；其餘是我直接付的家庭開支。
+// 家庭頁顯示用的分類名稱：兩邊記帳表裡意思相同的分類合併成一個名稱
+const FAM_NAME = { '貓費用': '貓咪費用', '家庭開支-貓咪費用': '貓咪費用', '日用品費-家庭': '家庭日用品', '家庭開支-家庭用品': '家庭日用品', '外食費-家庭': '家庭外食', '家庭開支-食材費': '家庭食材' };
+const famName = c => FAM_NAME[c] || c;
 const famFull = () => famAll().map(f => {
   const gv = (f.give || []).slice(), direct = [];
   all('txn').filter(x => x.type === 'out' && /^家庭開支/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
     const j = gv.findIndex(g => Math.abs(new Date(g[0]) - new Date(x.date)) <= 4 * 864e5 && Math.abs(g[2] - x.amount) <= g[2] * 0.25);
     if (j >= 0) gv.splice(j, 1); else direct.push(x);
   });
-  const mine = direct.reduce((a, x) => a + x.amount, 0), cats = { ...f.cats }; direct.forEach(x => cats[x.cat] = (cats[x.cat] || 0) + x.amount);
-  return { ...f, pTotal: f.total, mine, total: f.total + mine, cats, items: [...f.items.map(x => [...x, '伴侶']), ...direct.map(x => [x.date, x.note || x.cat.replace('家庭開支-', ''), x.cat, x.amount, '我'])].sort((a, b) => b[0].localeCompare(a[0])) };
+  const mine = direct.reduce((a, x) => a + x.amount, 0), cats = {}; Object.entries(f.cats).forEach(([c, v]) => cats[famName(c)] = (cats[famName(c)] || 0) + v); direct.forEach(x => cats[famName(x.cat)] = (cats[famName(x.cat)] || 0) + x.amount);
+  return { ...f, pTotal: f.total, mine, total: f.total + mine, cats, items: [...f.items.map(x => [x[0], x[1], famName(x[2]), x[3], '伴侶']), ...direct.map(x => [x.date, x.note || famName(x.cat), famName(x.cat), x.amount, '我'])].sort((a, b) => b[0].localeCompare(a[0])) };
 });
 const famEmpty = k => ({ month: k, year: !pSingle(k), n: 0, cats: {}, total: 0, pTotal: 0, mine: 0, given: 0, items: [] });
 const famPick = (F, k) => { const f = pIn(k); return k.endsWith('~') ? F.filter(x => x.month.startsWith(k.slice(0, 4)) && x.month.slice(5) <= today().slice(5, 7)) : F.filter(x => f(x.month)); };
