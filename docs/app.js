@@ -1,4 +1,4 @@
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.26.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -492,14 +492,16 @@ function invest() {
 
 // ---------- 家庭財務（唯讀：後端從伴侶的記帳試算表讀出家庭類別，每月彙整成一筆 fam 紀錄） ----------
 const famAll = () => all('fam').sort((a, b) => a.month.localeCompare(b.month));
-// 結算用：把我自己記帳裡「家庭開支-」的支出併進來。
+// 結算用：把我自己記帳裡「家庭開支-」（新表）與「H-」（舊表）的支出併進來。
 // 與伴侶帳上「我給家庭」日期相近（±4 天）且金額相近（±25%）的那筆是轉帳，不算支出（錢已由伴侶花在家庭開支上）；其餘是我直接付的家庭開支。
 // 家庭頁顯示用的分類名稱：兩邊記帳表裡意思相同的分類合併成一個名稱
-const FAM_NAME = { '貓費用': '貓咪費用', '家庭開支-貓咪費用': '貓咪費用', '日用品費-家庭': '家庭日用品', '家庭開支-家庭用品': '家庭日用品', '外食費-家庭': '家庭外食', '家庭開支-食材費': '家庭食材', '食材費': '家庭食材', '伙食費-家庭': '家庭外食' };
+const FAM_NAME = { '貓費用': '貓咪費用', '家庭開支-貓咪費用': '貓咪費用', '日用品費-家庭': '家庭日用品', '家庭開支-家庭用品': '家庭日用品', '外食費-家庭': '家庭外食', '家庭開支-食材費': '家庭食材', '食材費': '家庭食材', '伙食費-家庭': '家庭外食',
+  // 我自己舊記帳表（2026/5 以前）裡以「H-」開頭的是家庭開支
+  'H-貓費用': '貓咪費用', 'H-食材費': '家庭食材', 'H-日用品費': '家庭日用品', 'H-外食費': '家庭外食', 'H-飲咖酒': '家庭飲品', 'H-租金水電': '租金水電', 'H-交通費': '交通費-家庭' };
 const famName = c => FAM_NAME[c] || c;
 const famFull = () => famAll().map(f => {
   const gv = (f.give || []).slice(), direct = [];
-  all('txn').filter(x => x.type === 'out' && /^家庭開支/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
+  all('txn').filter(x => x.type === 'out' && /^(家庭開支|H-)/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
     const j = gv.findIndex(g => Math.abs(new Date(g[0]) - new Date(x.date)) <= 4 * 864e5 && Math.abs(g[2] - x.amount) <= g[2] * 0.25);
     if (j >= 0) gv.splice(j, 1); else direct.push(x);
   });
@@ -554,7 +556,7 @@ function famView() {
   ${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${key === 'all' ? x.month.slice(2).replace('-', '/') : +x.month.slice(5) + ' 月'} <span class="mut">${money(x.total)}</span></span><span>${paid(x) ? `<b>${money(paid(x))}</b> <span class="mut">${[x.given ? '轉 ' + money(x.given) : '', x.mine ? '付 ' + money(x.mine) : '', o ? '抵 ' + money(o) : ''].filter(Boolean).join('＋')}</span>` : ''} ${o !== undefined ? `<a class="wl mut" onclick="famOffset('${x.month}')">${o ? '改抵扣' : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">${paid(x) ? '加抵扣' : '未記錄'}</a>`}</span></div>`; }).join('')}
   <div class="item"><span><b>合計</b> <span class="mut">${money(ytotal)}</span></span><b>${money(ygiven)}</b></div>
   <p style="margin:10px 0 0">依 <a class="wl" onclick="famShare()">我 ${share}%／伴侶 ${100 - share}%</a> 分攤：我應負擔 <b>${money(due)}</b>，實際負擔 <b>${money(ygiven)}</b>，${Math.abs(ygiven - due) < 1 ? '剛好打平' : ygiven > due ? `<b class="ok">我多付 ${money(ygiven - due)}</b>` : `<b class="bad">我少付 ${money(due - ygiven)}</b>`}</p>
-  <p class="mut" style="margin:8px 0 0">家庭支出＝伴侶帳上的家庭類別＋我記帳裡「家庭開支-」的支出（轉給家庭帳戶的那筆不重複計算）。${yr.some(x => OFF[x.month] === 0) ? `另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月標記為以其他花費抵扣但沒填金額，尚未算進我負擔的部分；` : ''}點月份右邊可標記或修改抵扣金額，點比例可調整分攤方式。</p></div>
+  <p class="mut" style="margin:8px 0 0">家庭支出＝伴侶帳上的家庭類別＋我記帳裡的家庭開支（新表「家庭開支-」、舊表「H-」開頭的分類）（轉給家庭帳戶的那筆不重複計算）。${yr.some(x => OFF[x.month] === 0) ? `另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月標記為以其他花費抵扣但沒填金額，尚未算進我負擔的部分；` : ''}點月份右邊可標記或修改抵扣金額，點比例可調整分攤方式。</p></div>
   ${tips([
     isY && sel.length > 1 ? (() => { const hi = sel.slice().sort((a, b) => b.total - a.total)[0], lo = sel.slice().sort((a, b) => a.total - b.total)[0]; return `最高是 ${+hi.month.slice(5)} 月 <b>${money(hi.total)}</b>，最低是 ${+lo.month.slice(5)} 月 <b>${money(lo.total)}</b>`; })() : last.length > 1 ? `近 ${last.length} 個月平均 <b>${money(avg)}</b>，本月${cur.total >= avg ? '高於' : '低於'}平均 ${money(Math.abs(cur.total - avg))}` : '',
     cats[0] && cur.total > 0 ? `最大宗是「${esc(cats[0][0])}」<b>${money(cats[0][1])}</b>，佔 ${pct(cats[0][1], cur.total)}%` : '',
