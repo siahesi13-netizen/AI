@@ -1,4 +1,4 @@
-const APP_VERSION = '1.21.1';
+const APP_VERSION = '1.21.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -348,8 +348,7 @@ function fin() {
 // ---------- 投資（個人財務的分頁）：投入金額來自記帳裡「投資」分類；持有部位與市值手動維護 ----------
 window.invEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, k === 'name' || k === 'kind' ? { [k]: v.trim() } : { [k]: +v || 0, at: today() }); render(); };
 // 觀察清單：想研究或考慮買的標的，記下理由與消息來源，之後回頭對照
-const W_SRC = ['自己研究', '朋友或聽到的消息', '新聞媒體', '書或課程', '其他'], W_ST = [['watch', '觀察中'], ['bought', '已買'], ['drop', '放棄']];
-window.watchAdd = () => { const n = val('wt_n'); if (!n) return; put('watch', { name: n, kind: val('wt_k'), reason: val('wt_r'), source: val('wt_s'), status: 'watch', date: today() }); render(); };
+const W_ST = [['watch', '觀察中'], ['bought', '已買'], ['drop', '放棄']];
 window.watchEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: v.trim() }); render(); };
 window.watchSet = (id, st) => { patch(id, { status: st, statusAt: today() }); render(); };
 function watchCard() {
@@ -357,8 +356,7 @@ function watchCard() {
   const bySrc = {}; W.forEach(x => { if (x.source) bySrc[x.source] = (bySrc[x.source] || 0) + 1; });
   return `<div class="card" data-b="watch"><h2>觀察清單${W.length ? `（觀察中 ${n}）` : ''}</h2>${W.map(x => `<div class="item" style="display:block;${x.status === 'watch' ? '' : 'opacity:.6'}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span><a class="wl" onclick="watchEdit('${x.id}','name','名稱')"><b>${esc(x.name)}</b></a> <a class="wl mut" onclick="watchEdit('${x.id}','kind','類型')">${esc(x.kind || '類型')}</a></span><span><select style="margin:0;padding:4px 8px;width:auto" onchange="watchSet('${x.id}',this.value)" aria-label="狀態">${W_ST.map(([k, l]) => `<option value="${k}" ${x.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="x" onclick="del('${x.id}')">✕</button></span></div>
     <div class="mut" style="margin-top:4px">理由：<a class="wl" onclick="watchEdit('${x.id}','reason','想買的理由')">${esc(x.reason) || '尚未填寫'}</a></div><div class="mut">來源：<a class="wl" onclick="watchEdit('${x.id}','source','消息來源')">${esc(x.source) || '尚未填寫'}</a>・${esc(x.date || '')} 加入${x.statusAt && x.status !== 'watch' ? `・${esc(x.statusAt)} ${x.status === 'bought' ? '買進' : '放棄'}` : ''}</div></div>`).join('') || '<p class="empty">還沒有觀察中的標的</p>'}
-  ${Object.keys(bySrc).length > 1 ? `<p class="mut" style="margin:10px 0 0">來源分布：${Object.entries(bySrc).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)} ${v}`).join('、')}</p>` : ''}</div>
-  <div class="card" data-b="watchadd"><h2>加入觀察</h2><div class="row"><input id="wt_n" placeholder="名稱或代號"><input id="wt_k" placeholder="類型（例：主動型 ETF、美股、基金）"></div><input id="wt_r" placeholder="想買的理由"><select id="wt_s"><option value="">消息來源</option>${W_SRC.map(v => `<option>${v}</option>`).join('')}</select><button class="b" onclick="watchAdd()">加入</button></div>`;
+  ${Object.keys(bySrc).length > 1 ? `<p class="mut" style="margin:10px 0 0">來源分布：${Object.entries(bySrc).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)} ${v}`).join('、')}</p>` : ''}</div>`;
 }
 function invest() {
   const T = all('txn').filter(x => x.type === 'out' && x.cat === '投資').sort((a, b) => b.date.localeCompare(a.date)), H = all('holding').sort((a, b) => b.value - a.value);
