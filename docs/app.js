@@ -1,4 +1,4 @@
-const APP_VERSION = '1.21.2';
+const APP_VERSION = '1.22.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -292,13 +292,22 @@ const PFIN = {
   out: ['個人-外食', '個人-日用品', '個人-保養品', '個人-化妝品', '個人-髮衣鞋包帽', '個人交通-大眾交通', '個人交通-機車', '個人交通-計程車', '交際-送禮請客', '交際-家庭送禮', '家庭開支-食材費', '家庭開支-家庭用品', '家庭開支-貓咪費用', '醫療', '學習', '保險通訊訂閱', '投資', '儲蓄', '公司代墊款', '其他'],
   inc: ['薪水', '公司代墊回款', '其他'], def: 20000
 };
-const txns = m => all('txn').filter(x => (x.ledger || 'personal') === 'personal' && x.date.startsWith(m)); // m 為 'yyyy-MM' 或 'yyyy'（整年）
+// 期間鍵：'yyyy-MM' 單月、'yyyy' 整年、'yyyy~' 該年迄今（1/1 到今天的同月同日）、'all' 總計
+const pSingle = k => /^\d{4}-\d{2}$/.test(k);
+const pIn = k => k === 'all' ? () => true : k.endsWith('~') ? d => d.startsWith(k.slice(0, 4)) && d.slice(5) <= today().slice(5) : d => d.startsWith(k);
+const pPrev = k => k === 'all' ? null : pSingle(k) ? prevMonth(k) : k.endsWith('~') ? (+k.slice(0, 4) - 1) + '~' : String(+k - 1);
+const pLabel = k => k === 'all' ? '總計' : pSingle(k) ? `${k.slice(0, 4)} 年 ${+k.slice(5)} 月` : k.endsWith('~') ? `${k.slice(0, 4)} 年迄今` : `${k} 整年`;
+const pKey = (y, mo) => y === 'all' ? 'all' : mo === 'Y' ? y : mo === 'ytd' ? y + '~' : y + '-' + mo;
+// 年份、月份兩個下拉：年份含「總計」，月份含「整年」「迄今」與 1–12 月
+const pSelect = (key, years, fn) => { const y = key === 'all' ? 'all' : key.slice(0, 4), mo = key === 'all' ? 'Y' : pSingle(key) ? key.slice(5) : key.endsWith('~') ? 'ytd' : 'Y'; return `<div class="row" style="margin:0"><select id="${fn}_y" onchange="${fn}()" aria-label="年份"><option value="all" ${y === 'all' ? 'selected' : ''}>總計</option>${years.map(v => `<option value="${v}" ${v === y ? 'selected' : ''}>${v} 年</option>`).join('')}</select><select id="${fn}_m" onchange="${fn}()" aria-label="月份" ${y === 'all' ? 'disabled' : ''}><option value="Y" ${mo === 'Y' ? 'selected' : ''}>整年</option><option value="ytd" ${mo === 'ytd' ? 'selected' : ''}>迄今</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => { const v = String(n).padStart(2, '0'); return `<option value="${v}" ${v === mo ? 'selected' : ''}>${n} 月</option>`; }).join('')}</select></div>`; };
+const txns = k => { const f = pIn(k); return all('txn').filter(x => (x.ledger || 'personal') === 'personal' && f(x.date)); };
 const finSum = (m = month(today())) => { const t = txns(m); return { inc: t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), out: t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), budget: setting('budget', PFIN.def) }; };
 window.finAdd = () => { const a = +val('ft_a'); if (!a) return; put('txn', { ledger: 'personal', date: val('ft_d') || today(), type: val('ft_t'), amount: a, cat: val('ft_c'), acct: val('ft_k'), note: val('ft_n') }); render(); };
 window.finType = () => { $('#ft_c').innerHTML = ($('#ft_t').value === 'out' ? PFIN.out : PFIN.inc).map(c => `<option>${c}</option>`).join(''); };
 window.finBudget = () => { const g = prompt('每月總預算', setting('budget', PFIN.def)); if (g) { setSetting('budget', +g); render(); } };
 window.finCatBudget = c => { const B = setting('catbudget', {}), g = prompt(`「${c}」每月預算（留空表示不設）`, B[c] ?? ''); if (g === null) return; const n = { ...B }; if (g.trim() && +g > 0) n[c] = +g; else delete n[c]; setSetting('catbudget', n); render(); };
 window.finMonth = d => { ui.m = d; render(); };
+window.finPick = () => finMonth(pKey($('#finPick_y').value, $('#finPick_m').value));
 const pfinSeg = () => seg('pfin', [['led', '收支'], ['add', '記帳'], ['inv', '投資']]);
 // 記帳分頁：新增一筆帳，下方列出最近新增的幾筆方便確認
 function finAddView() {
@@ -312,31 +321,31 @@ function finAddView() {
 function fin() {
   if (sub.pfin === 'inv') return pfinSeg() + invest();
   if (sub.pfin === 'add') return pfinSeg() + finAddView();
-  const m = ui.m || month(today()), isY = /^\d{4}$/.test(m), t = txns(m), { inc, out, budget: bud } = finSum(m), by = {}, B1 = setting('catbudget', {});
+  const m = ui.m || month(today()), isY = !pSingle(m), t = txns(m), { inc, out, budget: bud } = finSum(m), by = {}, B1 = setting('catbudget', {});
   // 整年檢視：預算乘上該年有記帳的月數
   const yms = [...new Set(t.map(x => month(x.date)))].sort(), nM = isY ? Math.max(1, yms.length) : 1, budget = bud * nM, B = {}; Object.keys(B1).forEach(c => B[c] = B1[c] * nM);
   const years = [...new Set(all('txn').map(x => x.date.slice(0, 4)))].sort().reverse();
-  const allMs = [...new Set([...all('txn').map(x => month(x.date)), month(today()), ...(isY ? [] : [m])])].sort().reverse();
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
   const cats = [...new Set([...Object.keys(by), ...Object.keys(B)])].map(c => [c, by[c] || 0]).sort((a, b) => b[1] - a[1]);
   const byIn = {}; t.filter(x => x.type === 'in').forEach(x => byIn[x.cat] = (byIn[x.cat] || 0) + x.amount);
   const incs = Object.entries(byIn).sort((a, b) => b[1] - a[1]);
   // 分析：公司代墊款是先墊後還，計算實際收支與儲蓄率時排除
   const isAdv = x => /代墊/.test(x.cat), rOut = t.filter(x => x.type === 'out' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), rInc = t.filter(x => x.type === 'in' && !isAdv(x)).reduce((a, x) => a + x.amount, 0);
-  const ms = isY ? yms.slice() : []; if (!isY) for (let k = m, i = 0; i < 6; i++, k = prevMonth(k)) ms.unshift(k);
+  // 走勢圖：單月看近 6 個月；整年或迄今看各月；總計看各年度
+  const ms = m === 'all' ? years.slice().reverse() : isY ? yms.slice() : []; if (!isY) for (let k = m, i = 0; i < 6; i++, k = prevMonth(k)) ms.unshift(k);
   const sums = ms.map(k => { const q = txns(k).filter(x => !isAdv(x)); return [q.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), q.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0)]; });
-  const pb = {}; txns(isY ? String(+m - 1) : prevMonth(m)).filter(x => x.type === 'out').forEach(x => pb[x.cat] = (pb[x.cat] || 0) + x.amount);
+  const pb = {}; (pPrev(m) ? txns(pPrev(m)) : []).filter(x => x.type === 'out').forEach(x => pb[x.cat] = (pb[x.cat] || 0) + x.amount);
   const up = Object.keys(by).filter(c => !/代墊/.test(c)).map(c => [c, by[c] - (pb[c] || 0)]).sort((a, b) => b[1] - a[1])[0];
   const over = Object.keys(B).filter(c => (by[c] || 0) > B[c]).sort((a, b) => (by[b] - B[b]) - (by[a] - B[a]));
   const days = isY ? yms.reduce((a, k) => a + (k === month(today()) ? +today().slice(8) : new Date(+k.slice(0, 4), +k.slice(5), 0).getDate()), 0) || 1 : m === month(today()) ? +today().slice(8) : new Date(+m.slice(0, 4), +m.slice(5), 0).getDate(), top = cats.filter(([c]) => !/代墊/.test(c))[0];
-  const analysis = t.length ? `<div class="card" data-b="trend"><h2>${isY ? `${m} 年各月收支` : '近 6 個月收支'}</h2>${pairBars(ms.map(k => +k.slice(5) + (ms.length > 8 ? '' : ' 月')), sums.map(x => x[0]), sums.map(x => x[1]), isY ? -1 : 5, i => `finMonth('${ms[i]}')`)}${legend('收入', '支出（皆不含公司代墊）')}</div>` + tips([
+  const analysis = t.length ? `<div class="card" data-b="trend"><h2>${m === 'all' ? '各年度收支' : isY ? `${pLabel(m)}各月收支` : '近 6 個月收支'}</h2>${pairBars(ms.map(k => m === 'all' ? k : +k.slice(5) + (ms.length > 8 ? '' : ' 月')), sums.map(x => x[0]), sums.map(x => x[1]), isY ? -1 : 5, i => `finMonth('${ms[i]}')`)}${legend('收入', '支出（皆不含公司代墊）')}</div>` + tips([
     `扣除公司代墊後：收入 <b>${money(rInc)}</b>、支出 <b>${money(rOut)}</b>、結餘 <b class="${rInc - rOut >= 0 ? 'ok' : 'bad'}">${money(rInc - rOut)}</b>${rInc ? `，儲蓄率 ${pct(rInc - rOut, rInc)}%` : ''}`,
     rOut ? `平均每天支出 <b>${money(rOut / days)}</b>${isY ? `，平均每月 <b>${money(rOut / nM)}</b>` : budget ? `；照總預算每天可用 ${money(budget / new Date(+m.slice(0, 4), +m.slice(5), 0).getDate())}` : ''}` : '',
     top && rOut ? `花最多的是「${esc(top[0])}」<b>${money(top[1])}</b>，佔實際支出 ${pct(top[1], rOut)}%` : '',
     over.length ? `超出預算 ${over.length} 類：${over.slice(0, 4).map(c => `${esc(c)}（+${money(by[c] - B[c])}）`).join('、')}` : (Object.keys(B).length && rOut ? '所有分類都在預算內' : ''),
-    up && up[1] > 0 && Object.keys(pb).length ? `比${isY ? '前一年' : '上個月'}增加最多的是「${esc(up[0])}」，多了 ${money(up[1])}` : ''
+    up && up[1] > 0 && Object.keys(pb).length ? `比${m.endsWith('~') ? '前一年同期' : isY ? '前一年' : '上個月'}增加最多的是「${esc(up[0])}」，多了 ${money(up[1])}` : ''
   ]) + advice('pfin') : '';
-  return pfinSeg() + `<div class="card" data-b="sum"><select onchange="finMonth(this.value)">${years.map(v => `<option value="${v}" ${v === m ? 'selected' : ''}>${v} 整年</option>`).join('')}${allMs.map(k => `<option value="${k}" ${k === m ? 'selected' : ''}>${k.replace('-', ' 年 ')} 月</option>`).join('')}</select>${isY ? `<p class="mut" style="margin:6px 0 0">${nM} 個月有記帳</p>` : ''}
+  return pfinSeg() + `<div class="card" data-b="sum">${pSelect(m, years, 'finPick')}${isY ? `<p class="mut" style="margin:6px 0 0">${pLabel(m)}・${nM} 個月有記帳</p>` : ''}
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
   <div class="mut"><a class="wl" onclick="finBudget()">${isY ? `${nM} 個月總預算` : '總預算'} ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
@@ -387,7 +396,9 @@ const famFull = () => famAll().map(f => {
   const mine = direct.reduce((a, x) => a + x.amount, 0), cats = { ...f.cats }; direct.forEach(x => cats[x.cat] = (cats[x.cat] || 0) + x.amount);
   return { ...f, pTotal: f.total, mine, total: f.total + mine, cats, items: [...f.items.map(x => [...x, '伴侶']), ...direct.map(x => [x.date, x.note || x.cat.replace('家庭開支-', ''), x.cat, x.amount, '我'])].sort((a, b) => b[0].localeCompare(a[0])) };
 });
-const famYear = (F, y) => { const M = F.filter(x => x.month.startsWith(y)), cats = {}; if (!M.length) return null; M.forEach(x => Object.entries(x.cats).forEach(([c, v]) => cats[c] = (cats[c] || 0) + v)); const sum = k => M.reduce((a, x) => a + (x[k] || 0), 0); return { month: y, year: true, n: M.length, cats, total: sum('total'), pTotal: sum('pTotal'), mine: sum('mine'), given: sum('given'), items: M.flatMap(x => x.items).sort((a, b) => b[0].localeCompare(a[0])) }; };
+const famEmpty = k => ({ month: k, year: !pSingle(k), n: 0, cats: {}, total: 0, pTotal: 0, mine: 0, given: 0, items: [] });
+const famPick = (F, k) => { const f = pIn(k); return k.endsWith('~') ? F.filter(x => x.month.startsWith(k.slice(0, 4)) && x.month.slice(5) <= today().slice(5, 7)) : F.filter(x => f(x.month)); };
+const famAgg = (M, y) => { const cats = {}; if (!M.length) return null; M.forEach(x => Object.entries(x.cats).forEach(([c, v]) => cats[c] = (cats[c] || 0) + v)); const sum = k => M.reduce((a, x) => a + (x[k] || 0), 0); return { month: y, year: true, n: M.length, cats, total: sum('total'), pTotal: sum('pTotal'), mine: sum('mine'), given: sum('given'), items: M.flatMap(x => x.items).sort((a, b) => b[0].localeCompare(a[0])) }; };
 const famTotal = (m = month(today())) => (famFull().find(x => x.month === m) || {}).total || 0;
 let famBusy = false;
 window.famRefresh = async link => {
@@ -401,6 +412,7 @@ window.famRefresh = async link => {
 };
 window.famLink = () => { const v = val('fam_l') || prompt('貼上記帳試算表的連結'); if (v) famRefresh(v); };
 window.famMonth = m => { ui.fm = m; render(); };
+window.famPickSel = () => famMonth(pKey($('#famPickSel_y').value, $('#famPickSel_m').value));
 window.famShare = () => { const v = prompt('我應負擔家庭支出的比例（%）', setting('famshare', 50)); if (v === null) return; setSetting('famshare', Math.max(0, Math.min(100, +v || 0))); render(); };
 // 沒有轉帳、以其他花費抵扣的月份：{ 'yyyy-MM': 金額 }，金額 0 表示只標記不計金額
 window.famOffset = m => { const O = setting('famoffset', {}), v = prompt(`${+m.slice(5)} 月以其他花費抵扣的金額（不確定填 0；清空表示取消標記）`, O[m] ?? 0); if (v === null) return; const n = { ...O }; if (v.trim() === '') delete n[m]; else n[m] = Math.max(0, +v || 0); setSetting('famoffset', n); render(); };
@@ -413,26 +425,27 @@ function famView() {
   const F = famFull(), msg = ui.famMsg ? `<p class="mut" style="margin:0 2px 12px">${esc(ui.famMsg)}</p>` : '';
   if (cfg().token && !famBusy && Date.now() - (LS('lh_famAt') || 0) > 30 * 6e4) { LS('lh_famAt', Date.now()); setTimeout(() => famRefresh(), 0); } // 每 30 分鐘最多向來源試算表重讀一次
   if (!F.length) return msg + `<div class="card" data-b="setup"><h2>連結家庭記帳表</h2><p class="mut" style="margin:0 0 8px">貼上伴侶記帳試算表的連結，這頁會顯示其中的家庭類別彙總。連結只存在你自己的後端，不會出現在公開的程式碼裡。</p><input id="fam_l" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="b" onclick="famLink()">連結並讀取</button></div>`;
-  const years = [...new Set(F.map(x => x.month.slice(0, 4)))].sort().reverse(), isY = /^\d{4}$/.test(ui.fm || '') && years.includes(ui.fm);
-  const cur = isY ? famYear(F, ui.fm) : F.find(x => x.month === ui.fm) || F.find(x => x.month === month(today())) || F[F.length - 1], i = F.indexOf(cur), prev = isY ? famYear(F, String(+ui.fm - 1)) : F[i - 1];
-  const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), y = cur.month.slice(0, 4), yr = F.filter(x => x.month.startsWith(y)), last = isY ? yr : F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), OFF = setting('famoffset', {});
+  const years = [...new Set(F.map(x => x.month.slice(0, 4)))].sort().reverse(), key = ui.fm || (F.find(x => x.month === month(today())) || F[F.length - 1]).month, isY = !pSingle(key);
+  const sel = isY ? famPick(F, key) : [], cur = isY ? famAgg(sel, key) || famEmpty(key) : F.find(x => x.month === key) || famEmpty(key), pk = pPrev(key), prev = !pk ? null : isY ? famAgg(famPick(F, pk), pk) : F.find(x => x.month === pk);
+  // 結算與「年」有關的區塊：總計時涵蓋所有月份，否則是所選年份
+  const cats = Object.entries(cur.cats).sort((a, b) => b[1] - a[1]), y = key === 'all' ? '總計' : key.slice(0, 4) + ' 年', yr = key === 'all' ? F : F.filter(x => x.month.startsWith(key.slice(0, 4))), last = isY ? sel : F.slice(-6), mx = Math.max(1, ...last.map(x => x.total)), at = LS('lh_famAt'), OFF = setting('famoffset', {});
   const avg = last.reduce((a, x) => a + x.total, 0) / last.length, ytotal = yr.reduce((a, x) => a + x.total, 0), paid = x => (x.given || 0) + (x.mine || 0) + (OFF[x.month] || 0), ygiven = yr.reduce((a, x) => a + paid(x), 0), share = setting('famshare', 50), due = ytotal * share / 100, big = cur.items.slice().sort((a, b) => b[3] - a[3])[0];
-  return msg + `<div class="card" data-b="sum"><select onchange="famMonth(this.value)">${years.map(v => `<option value="${v}" ${isY && cur.month === v ? 'selected' : ''}>${v} 整年</option>`).join('')}${F.slice().reverse().map(x => `<option value="${x.month}" ${x === cur ? 'selected' : ''}>${x.month.replace('-', ' 年 ')} 月</option>`).join('')}</select>
-  <div style="margin-top:10px"><div class="eyebrow">${isY ? `${y} 年家庭支出（${cur.n} 個月）` : '家庭支出'}</div><div class="big">${money(cur.total)}</div></div>
-  <div style="margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--tagbg)"><div class="eyebrow">${y} 年結算（我 ${share}%）</div><div class="big ${Math.abs(ygiven - due) < 1 ? '' : ygiven > due ? 'ok' : 'bad'}" style="font-size:21px">${Math.abs(ygiven - due) < 1 ? '剛好打平' : ygiven > due ? '我多給 ' + money(ygiven - due) : '我少給 ' + money(due - ygiven)}</div><div class="mut">應負擔 ${money(due)}・已負擔 ${money(ygiven)}${yr.some(x => OFF[x.month] === 0) ? `・另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月抵扣未填金額` : ''}</div></div>
-  <p style="margin:8px 0 0">伴侶付 <b>${money(cur.pTotal)}</b>・我直接付 <b>${money(cur.mine)}</b>${cur.given ? `・我轉給家庭 <b>${money(cur.given)}</b>` : ''}</p><p class="mut" style="margin:6px 0 0">${isY ? `平均每月 ${money(cur.total / cur.n)}・` : ''}${prev ? `${isY ? `前一年（${prev.n} 個月）` : '上月'} ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
+  return msg + `<div class="card" data-b="sum">${pSelect(key, years, 'famPickSel')}
+  <div style="margin-top:10px"><div class="eyebrow">${isY ? `${pLabel(key)}家庭支出（${cur.n} 個月）` : `${pLabel(key)}家庭支出`}</div><div class="big">${money(cur.total)}</div></div>
+  <div style="margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--tagbg)"><div class="eyebrow">${y}結算（我 ${share}%）</div><div class="big ${Math.abs(ygiven - due) < 1 ? '' : ygiven > due ? 'ok' : 'bad'}" style="font-size:21px">${Math.abs(ygiven - due) < 1 ? '剛好打平' : ygiven > due ? '我多給 ' + money(ygiven - due) : '我少給 ' + money(due - ygiven)}</div><div class="mut">應負擔 ${money(due)}・已負擔 ${money(ygiven)}${yr.some(x => OFF[x.month] === 0) ? `・另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月抵扣未填金額` : ''}</div></div>
+  <p style="margin:8px 0 0">伴侶付 <b>${money(cur.pTotal)}</b>・我直接付 <b>${money(cur.mine)}</b>${cur.given ? `・我轉給家庭 <b>${money(cur.given)}</b>` : ''}</p><p class="mut" style="margin:6px 0 0">${isY && cur.n ? `平均每月 ${money(cur.total / cur.n)}・` : ''}${prev ? `${isY ? `${pLabel(pk)}（${prev.n} 個月）` : '上月'} ${money(prev.total)}，${cur.total >= prev.total ? '增加' : '減少'} ${money(Math.abs(cur.total - prev.total))}・` : ''}${cur.items.length} 筆</p></div>
   <div class="card" data-b="cats"><h2>分類</h2>${cats.map(([c, v]) => `<div class="mut">${esc(c)} ${money(v)}（${cur.total > 0 ? Math.round(v / cur.total * 100) : 0}%）</div><div class="bar" style="margin:3px 0 8px"><i style="width:${Math.max(0, Math.min(100, cur.total > 0 ? v / cur.total * 100 : 0))}%"></i></div>`).join('')}</div>
-  <div class="card" data-b="trend"><h2>${isY ? `${y} 年各月` : `近 ${last.length} 個月`}</h2><div class="bars" style="grid-template-columns:repeat(${last.length},1fr)">${last.map(x => `<div class="${x === cur ? 'td' : ''}" onclick="famMonth('${x.month}')" style="cursor:pointer"><span>${last.length > 8 ? Math.round(x.total / 1000) + 'k' : Math.round(x.total).toLocaleString()}</span><i style="height:${Math.max(0, x.total) / mx * 72}%"></i><small>${+x.month.slice(5)}${last.length > 8 ? '' : ' 月'}</small></div>`).join('')}</div></div>
-  <div class="card" data-b="give"><h2>${y} 年結算</h2>
+  <div class="card" data-b="trend"><h2>${isY ? `${pLabel(key)}各月` : `近 ${last.length} 個月`}</h2><div class="bars" style="grid-template-columns:repeat(${last.length},1fr)">${last.map(x => `<div class="${x.month === key ? 'td' : ''}" onclick="famMonth('${x.month}')" style="cursor:pointer"><span>${last.length > 8 ? Math.round(x.total / 1000) + 'k' : Math.round(x.total).toLocaleString()}</span><i style="height:${Math.max(0, x.total) / mx * 72}%"></i><small>${+x.month.slice(5)}${last.length > 8 ? '' : ' 月'}</small></div>`).join('')}</div></div>
+  <div class="card" data-b="give"><h2>${y}結算</h2>
   <div class="item mut"><span>月份・家庭支出</span><span>我負擔（轉帳＋直接付）</span></div>
-  ${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${+x.month.slice(5)} 月 <span class="mut">${money(x.total)}</span></span><span>${paid(x) ? `<b>${money(paid(x))}</b> <span class="mut">${[x.given ? '轉 ' + money(x.given) : '', x.mine ? '付 ' + money(x.mine) : '', o ? '抵 ' + money(o) : ''].filter(Boolean).join('＋')}</span>` : ''} ${o !== undefined ? `<a class="wl mut" onclick="famOffset('${x.month}')">${o ? '改抵扣' : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">${paid(x) ? '加抵扣' : '未記錄'}</a>`}</span></div>`; }).join('')}
+  ${yr.map(x => { const o = OFF[x.month]; return `<div class="item"><span>${key === 'all' ? x.month.slice(2).replace('-', '/') : +x.month.slice(5) + ' 月'} <span class="mut">${money(x.total)}</span></span><span>${paid(x) ? `<b>${money(paid(x))}</b> <span class="mut">${[x.given ? '轉 ' + money(x.given) : '', x.mine ? '付 ' + money(x.mine) : '', o ? '抵 ' + money(o) : ''].filter(Boolean).join('＋')}</span>` : ''} ${o !== undefined ? `<a class="wl mut" onclick="famOffset('${x.month}')">${o ? '改抵扣' : '以其他花費抵扣'}</a>` : x.given ? '' : `<a class="wl mut" onclick="famOffset('${x.month}')">${paid(x) ? '加抵扣' : '未記錄'}</a>`}</span></div>`; }).join('')}
   <div class="item"><span><b>合計</b> <span class="mut">${money(ytotal)}</span></span><b>${money(ygiven)}</b></div>
   <p style="margin:10px 0 0">依 <a class="wl" onclick="famShare()">我 ${share}%／伴侶 ${100 - share}%</a> 分攤：我應負擔 <b>${money(due)}</b>，實際負擔 <b>${money(ygiven)}</b>，${Math.abs(ygiven - due) < 1 ? '剛好打平' : ygiven > due ? `<b class="ok">我多付 ${money(ygiven - due)}</b>` : `<b class="bad">我少付 ${money(due - ygiven)}</b>`}</p>
   <p class="mut" style="margin:8px 0 0">家庭支出＝伴侶帳上的家庭類別＋我記帳裡「家庭開支-」的支出（轉給家庭帳戶的那筆不重複計算）。${yr.some(x => OFF[x.month] === 0) ? `另有 ${yr.filter(x => OFF[x.month] === 0).length} 個月標記為以其他花費抵扣但沒填金額，尚未算進我負擔的部分；` : ''}點月份右邊可標記或修改抵扣金額，點比例可調整分攤方式。</p></div>
   ${tips([
-    isY ? (() => { const hi = yr.slice().sort((a, b) => b.total - a.total)[0], lo = yr.slice().sort((a, b) => a.total - b.total)[0]; return `最高是 ${+hi.month.slice(5)} 月 <b>${money(hi.total)}</b>，最低是 ${+lo.month.slice(5)} 月 <b>${money(lo.total)}</b>`; })() : last.length > 1 ? `近 ${last.length} 個月平均 <b>${money(avg)}</b>，本月${cur.total >= avg ? '高於' : '低於'}平均 ${money(Math.abs(cur.total - avg))}` : '',
+    isY && sel.length > 1 ? (() => { const hi = sel.slice().sort((a, b) => b.total - a.total)[0], lo = sel.slice().sort((a, b) => a.total - b.total)[0]; return `最高是 ${+hi.month.slice(5)} 月 <b>${money(hi.total)}</b>，最低是 ${+lo.month.slice(5)} 月 <b>${money(lo.total)}</b>`; })() : last.length > 1 ? `近 ${last.length} 個月平均 <b>${money(avg)}</b>，本月${cur.total >= avg ? '高於' : '低於'}平均 ${money(Math.abs(cur.total - avg))}` : '',
     cats[0] && cur.total > 0 ? `最大宗是「${esc(cats[0][0])}」<b>${money(cats[0][1])}</b>，佔 ${pct(cats[0][1], cur.total)}%` : '',
-    ygiven && ytotal > 0 ? `${y} 年至今家庭支出 <b>${money(ytotal)}</b>，我負擔 <b>${money(ygiven)}</b>，相當於 ${pct(ygiven, ytotal)}%` : '',
+    ygiven && ytotal > 0 ? `${y}家庭支出 <b>${money(ytotal)}</b>，我負擔 <b>${money(ygiven)}</b>，相當於 ${pct(ygiven, ytotal)}%` : '',
     big ? `單筆最高：${big[0].slice(5)} ${esc(big[1])} ${money(big[3])}` : ''
   ])}${advice('ffin')}
   <div class="card" data-b="list"><h2>明細</h2>${cur.items.map(x => `<div class="item"><span>${x[0].slice(5)} ${esc(x[1])} <span class="mut">${esc(x[2])}・${x[4]}付</span></span><b>${money(x[3])}</b></div>`).join('')}</div>
