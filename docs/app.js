@@ -1,4 +1,4 @@
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.19.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -522,16 +522,20 @@ function goalList() {
   `<div class="card"><h2>新增目標</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
 }
 // 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
-const MID = () => 'mandala_' + new Date().getFullYear();
+// 每年一張九宮格：ui.my 是目前檢視的年份（預設今年）
+const mYear = () => ui.my || new Date().getFullYear();
+const MID = () => 'mandala_' + mYear();
+window.mSetYear = y => { ui.my = +y; ui.mb = 4; render(); };
 const mcells = () => DB[MID()] && !DB[MID()].deleted ? DB[MID()].data.cells || {} : {};
 const mkey = (b, i) => b === 4 ? `4_${i}` : i === 4 ? `4_${b}` : `${b}_${i}`;
-window.mSet = (k, label) => { const v = prompt(label, mcells()[k] || ''); if (v === null) return; put('mandala', { year: new Date().getFullYear(), cells: { ...mcells(), [k]: v.trim() } }, MID()); render(); };
+window.mSet = (k, label) => { const v = prompt(label, mcells()[k] || ''); if (v === null) return; put('mandala', { year: mYear(), cells: { ...mcells(), [k]: v.trim() } }, MID()); render(); };
 window.mOpen = b => { ui.mb = b; render(); };
 window.mTap = (b, i) => { const c = mcells(); if (b === 4) { if (i === 4) return mSet('4_4', '今年的核心目標'); return c[`4_${i}`] ? mOpen(i) : mSet(`4_${i}`, '面向（例：健康、財務、創作）'); } if (i === 4) return mSet(`4_${b}`, '面向名稱'); mSet(`${b}_${i}`, '具體行動'); };
 const mBlock = (b, mini) => `<div class="mand ${mini ? 'mini' : ''}">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => { const t = mcells()[mkey(b, i)] || ''; return `<div class="mc ${i === 4 ? (b === 4 ? 'core' : 'ctr') : ''} ${b === 4 && i !== 4 ? 'sub' : ''}" onclick="${mini ? `mOpen(${b})` : `mTap(${b},${i})`}">${esc(t) || (mini ? '' : '<span class="mut">＋</span>')}</div>`; }).join('')}</div>`;
 function mandala() {
-  const c = mcells(), b = ui.mb, filled = Object.keys(c).filter(k => !k.startsWith('4_') && c[k]).length;
-  return `<div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${new Date().getFullYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
+  const c = mcells(), b = ui.mb, filled = Object.keys(c).filter(k => !k.startsWith('4_') && c[k]).length, ny = new Date().getFullYear();
+  const ys = [...new Set([...all('mandala').map(x => +x.year).filter(Boolean), ny, ny + 1, mYear()])].sort((a, b) => b - a);
+  return `<div class="seg">${ys.map(y => `<button class="${y === mYear() ? 'on' : ''}" onclick="mSetYear(${y})">${y}${y === ny ? '・今年' : ''}</button>`).join('')}</div><div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${mYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
     ${mBlock(b, false)}<div class="mut" style="margin-top:10px">已填行動 ${filled} / 64</div><div class="bar" style="margin-top:6px"><i style="width:${filled / 64 * 100}%"></i></div></div>
   <div class="card m9"><h2>全貌</h2><div class="mand9">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(x => mBlock(x, true)).join('')}</div></div>`;
 }
@@ -591,15 +595,15 @@ window.cpToMandala = id => {
   const x = DB[id].data, c = mcells();
   if (!M_OUT.some(b => c['4_' + b])) return alert('九宮格還沒有設定面向，請先到「未來目標 → 曼陀羅九宮格」填中間的八個面向。');
   let d = $('#mDlg'); if (!d) { d = document.createElement('dialog'); d.id = 'mDlg'; document.body.appendChild(d); }
-  d.innerHTML = `<h2 style="margin-top:0">放進九宮格</h2><input id="mTxt" maxlength="30" value="${esc((x.gist || x.text || '').slice(0, 20))}" aria-label="要寫進格子的內容"><p class="mut" style="margin:6px 0 10px">先改成想寫進格子的短句，再點要放的面向。</p>
-  <div class="mand">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(b => { if (b === 4) return `<div class="mc core">${esc(c['4_4'] || '今年')}</div>`; const name = c['4_' + b], free = M_OUT.filter(i => !c[`${b}_${i}`]).length; return name && free ? `<div class="mc ctr" style="cursor:pointer;flex-direction:column" onclick="cpMandPick('${id}',${b})">${esc(name)}<small class="mut" style="display:block">空 ${free} 格</small></div>` : `<div class="mc" style="opacity:.45;flex-direction:column">${esc(name || '')}${name ? '<small class="mut" style="display:block">已滿</small>' : ''}</div>`; }).join('')}</div>
+  d.innerHTML = `<h2 style="margin-top:0">放進 ${mYear()} 九宮格</h2><input id="mTxt" maxlength="30" value="${esc((x.gist || x.text || '').slice(0, 20))}" aria-label="要寫進格子的內容"><p class="mut" style="margin:6px 0 10px">先改成想寫進格子的短句，再點要放的面向。</p>
+  <div class="mand">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(b => { if (b === 4) return `<div class="mc core">${esc(c['4_4'] || mYear())}</div>`; const name = c['4_' + b], free = M_OUT.filter(i => !c[`${b}_${i}`]).length; return name && free ? `<div class="mc ctr" style="cursor:pointer;flex-direction:column" onclick="cpMandPick('${id}',${b})">${esc(name)}<small class="mut" style="display:block">空 ${free} 格</small></div>` : `<div class="mc" style="opacity:.45;flex-direction:column">${esc(name || '')}${name ? '<small class="mut" style="display:block">已滿</small>' : ''}</div>`; }).join('')}</div>
   <button class="b g" style="margin-top:12px" onclick="$('#mDlg').close()">取消</button>`;
   d.showModal();
 };
 window.cpMandPick = (id, b) => {
   const c = mcells(), text = ($('#mTxt').value || '').trim(); if (!text) return $('#mTxt').focus();
   const slot = M_OUT.find(i => !c[`${b}_${i}`]); if (slot === undefined) return;
-  const k = `${b}_${slot}`; put('mandala', { year: new Date().getFullYear(), cells: { ...c, [k]: text } }, MID()); patch(id, { mand: { b, k } }); $('#mDlg').close(); render();
+  const k = `${b}_${slot}`; put('mandala', { year: mYear(), cells: { ...c, [k]: text } }, MID()); patch(id, { mand: { b, k } }); $('#mDlg').close(); render();
 };
 window.cpToCard = id => { const x = DB[id].data; sub.know = 'notes'; ui.note = null; ui.draft = `${x.gist || ''}\n\n「${x.text}」${x.thought ? '\n\n' + x.thought : ''}`.trim(); ui.draftSrc = x.src + (x.page ? ` p.${x.page}` : ''); render(); scrollTo(0, 0); };
 function commonplace() {
