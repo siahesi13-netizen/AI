@@ -1,4 +1,4 @@
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -64,7 +64,8 @@ document.body.insertAdjacentHTML('beforeend', `<dialog id="cfgDlg"><form id="cfg
   <div class="eyebrow" style="margin-top:6px">金鑰</div><input id="cfgTok" name="password" type="password" autocomplete="current-password">
   <div class="row"><button class="b" id="cfgSave" type="submit">儲存</button><button class="b g" id="cfgClose" type="button">關閉</button></div>
   <div class="eyebrow" style="margin-top:14px">設定碼</div><p class="mut" style="margin:2px 0 6px">把網址和金鑰合成一串。在已設定好的裝置按「複製」，到新裝置按「貼上」。設定碼等同金鑰，請勿外流。</p>
-  <div class="row"><button class="b g" id="cfgPaste" type="button">貼上設定碼</button><button class="b g" id="cfgCopy" type="button">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p></form></dialog>`);
+  <div class="row"><button class="b g" id="cfgPaste" type="button">貼上設定碼</button><button class="b g" id="cfgCopy" type="button">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p>
+  <div class="eyebrow" style="margin-top:10px">版面</div><p class="mut" style="margin:2px 0 6px">每個區塊都可以拖曳：按住區塊最上緣再移動。</p><button class="b g" id="cfgLayout" type="button">把目前這一頁恢復成預設排列</button></form></dialog>`);
 const cfgMsg = t => { $('#cfgMsg').textContent = t; };
 const openCfg = msg => { $('#cfgUrl').value = cfg().url || ''; $('#cfgTok').value = cfg().token || ''; cfgMsg(msg || ''); $('#cfgDlg').showModal(); };
 // 點圓點：這台裝置還沒設定時，先看剪貼簿有沒有設定碼（例如剛在 iPhone 複製，透過通用剪貼簿帶到 iPad），有就直接套用
@@ -73,6 +74,7 @@ $('#sync').onclick = async () => {
   openCfg();
 };
 $('#cfgClose').onclick = () => $('#cfgDlg').close();
+$('#cfgLayout').onclick = () => { layoutReset(); cfgMsg('已恢復這一頁的預設排列'); };
 $('#cfgForm').onsubmit = () => { saveCfg({ url: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() }); render(); }; // method=dialog 會自行關閉對話框；表單送出讓 Safari 有機會把網址＋金鑰存進 iCloud 鑰匙圈
 $('#cfgCopy').onclick = async () => { if (!cfg().token) return cfgMsg('這台裝置還沒設定，無法產生設定碼'); const c = setupCode(); try { await navigator.clipboard.writeText(c); cfgMsg('已複製設定碼'); } catch (e) { prompt('複製這串設定碼', c); } };
 $('#cfgPaste').onclick = async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { } if (!parseSetup(t)) t = prompt('貼上設定碼（lh1: 開頭）') || ''; const n = parseSetup(t); if (!n) return cfgMsg('這不是有效的設定碼'); saveCfg(n); $('#cfgDlg').close(); render(); };
@@ -114,24 +116,22 @@ function render() {
 
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
 const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : '');
-const GRIP = '<div class="grip"><span class="grip-h" title="按住拖曳可移動這個區塊" aria-label="拖曳移動區塊">⋯</span><button onclick="blkMove(this,-1)" aria-label="往前移">↑</button><button onclick="blkMove(this,1)" aria-label="往後移">↓</button></div>';
+// 每個區塊的上緣有一條看不見的拖曳區：按住區塊最上緣即可拖曳重排（沒有圖示，也沒有編輯模式）
+const GRIP = '<div class="grip grip-h" title="按住區塊上緣可拖曳移動"></div>';
 function applyLayout() {
-  const v = $('#view'), seen = {}, blocks = []; v.classList.toggle('two', tab === 'home'); document.body.classList.toggle('editing', !!ui.edit); $('#layoutBtn').classList.toggle('on', !!ui.edit);
+  const v = $('#view'), seen = {}, blocks = []; v.classList.toggle('two', tab === 'home');
   [...v.children].forEach((el, i) => {
     if (!el.dataset.b && ((i === 0 && el.matches('.ptitle')) || el.matches('.seg') || (!blocks.length && el.matches('p.mut')))) return; // 頁面標題、分頁切換、頂端說明固定在上方
     let k = el.dataset.b || ((el.querySelector('h2, summary, .eyebrow') || {}).textContent || (el.querySelector('input') || {}).placeholder || el.className || el.tagName).replace(/[\d\s（）()／/·\-–:：]/g, '').slice(0, 16) || 'blk';
     if (seen[k]) k += '#' + seen[k]; seen[k.split('#')[0]] = (seen[k.split('#')[0]] || 0) + 1;
     const w = document.createElement('div'); w.className = 'blk' + (el.classList.contains('full') ? ' full' : ''); w.dataset.b = k; el.removeAttribute('data-b');
-    v.insertBefore(w, el); w.appendChild(el); w.insertAdjacentHTML('afterbegin', GRIP); blocks.push(w); // 拖曳點常駐在每個區塊左上角
+    v.insertBefore(w, el); w.appendChild(el); w.insertAdjacentHTML('afterbegin', GRIP); blocks.push(w);
   });
   const order = setting('layout_' + pageKey(), []);
   if (order.length) blocks.map((b, i) => [order.indexOf(b.dataset.b) < 0 ? 1e3 + i : order.indexOf(b.dataset.b), b]).sort((a, b) => a[0] - b[0]).forEach(([, b]) => v.appendChild(b));
-  if (ui.edit) v.insertAdjacentHTML('afterbegin', `<div class="editbar full"><span>按住區塊左上角的 ⋯ 可隨時拖曳；這裡另外提供 ↑ ↓ 與恢復預設</span><span><button onclick="layoutReset()">恢復預設</button><button onclick="layoutEdit()">完成</button></span></div>`);
 }
 const saveLayout = () => setSetting('layout_' + pageKey(), [...document.querySelectorAll('#view > .blk')].map(b => b.dataset.b));
-window.layoutEdit = () => { ui.edit = !ui.edit; render(); };
 window.layoutReset = () => { setSetting('layout_' + pageKey(), []); render(); };
-window.blkMove = (btn, dir) => { const b = btn.closest('.blk'), sib = dir < 0 ? b.previousElementSibling : b.nextElementSibling; if (!sib || !sib.classList.contains('blk')) return; b.parentNode.insertBefore(b, dir < 0 ? sib : sib.nextSibling); saveLayout(); b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
 let dragging = null;
 document.addEventListener('pointerdown', e => { const h = e.target.closest('.grip-h'); if (!h) return; e.preventDefault(); dragging = h.closest('.blk'); dragging.classList.add('dragging'); h.setPointerCapture(e.pointerId); });
 document.addEventListener('pointermove', e => {
@@ -144,8 +144,6 @@ document.addEventListener('pointermove', e => {
 }, { passive: false });
 const dragEnd = () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; saveLayout(); };
 document.addEventListener('pointerup', dragEnd); document.addEventListener('pointercancel', dragEnd);
-$('#layoutBtn').innerHTML = IC('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>');
-$('#layoutBtn').onclick = () => layoutEdit();
 const val = id => $('#' + id)?.value.trim();
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
 const month = d => d.slice(0, 7);
@@ -273,6 +271,7 @@ const LEDGER = {
   family: { out: ['房租房貸', '水電瓦斯', '食材日用', '孝親', '保險', '教育', '交通', '其他'], inc: ['家用收入', '其他'], budget: 'budget_family', def: 40000 },
   personal: { out: ['餐飲', '交通', '居住', '購物', '娛樂', '醫療', '學習', '其他'], inc: ['薪資', '獎金', '投資', '其他'], budget: 'budget', def: 20000 }
 };
+const LATER = t => `<p class="mut" style="margin:0 2px 12px">${t}</p>`;
 const curLedger = () => tab === 'ffin' ? 'family' : 'personal';
 const txns = (L, m) => all('txn').filter(x => (x.ledger || 'personal') === L && month(x.date) === m);
 const finSum = (L, m = month(today())) => { const t = txns(L, m); return { inc: t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), out: t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), budget: setting(LEDGER[L].budget, LEDGER[L].def) }; };
@@ -316,26 +315,57 @@ function habit() {
   ${weekLog(dates)}`;
 }
 
-// ---------- 飲食管理 ----------
+// ---------- 飲食管理：輸入食物＋拍照，由後端請 Claude 估算熱量；結果可修改後再存 ----------
 const SLOTS = ['早餐', '午餐', '晚餐', '點心'], waterId = d => 'water_' + d, cups = d => DB[waterId(d)] && !DB[waterId(d)].deleted ? DB[waterId(d)].data.cups : 0;
 window.dietDate = d => { ui.dd = d; render(); };
 window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, waterId(ui.dd)); render(); };
 window.waterGoal = () => { const g = prompt('每日喝水目標（杯）', setting('water_goal', 8)); if (g) { setSetting('water_goal', +g); render(); } };
-window.mealAdd = () => { const t = val('mt'); if (!t) return; put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn') }); render(); };
-const LATER = t => `<p class="mut" style="margin:0 2px 12px">${t}</p>`;
 window.kcalGoal = () => { const g = prompt('每日攝取熱量目標（kcal）', setting('kcal_goal', 1800)); if (g) { setSetting('kcal_goal', +g); render(); } };
+const mealsOf = d => all('meal').filter(m => m.date === d), mealSum = (d, k) => mealsOf(d).reduce((a, m) => a + (+m[k] || 0), 0);
+const dayKcal = d => mealSum(d, 'kcal') || hv(d, 'diet_kcal');
+// 照片先在裝置上縮到長邊 1024 再上傳；照片只用來估算，不會被儲存
+const shrink = file => new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .8).split(',')[1]); }; img.onerror = () => rej(new Error('image')); img.src = url; });
+const mealMsg = t => { const e = $('#mst'); if (e) e.textContent = t; };
+const NUTRI_ERR = { 'no api key': '後端還沒有設定 Anthropic API 金鑰，所以無法估算。可以先手動填熱量。', 'api error': 'Claude API 回傳錯誤', refused: '這次的內容無法估算，請換個描述或照片。', truncated: '回應被截斷，請再試一次。', 'bad token': '同步金鑰錯誤', empty: '請輸入食物或拍一張照片' };
+window.mealPhoto = async inp => { const f = inp.files && inp.files[0]; if (!f) return; try { ui.mealImg = await shrink(f); $('#mpv').src = 'data:image/jpeg;base64,' + ui.mealImg; $('#mpv').hidden = false; mealMsg('照片已加入'); } catch (e) { mealMsg('這張照片讀不了，請換一張'); } };
+window.mealEstimate = async () => {
+  const text = val('mt'); ui.mealText = text; ui.mealSlot = val('ms');
+  if (!text && !ui.mealImg) return mealMsg(NUTRI_ERR.empty);
+  if (!cfg().url || !cfg().token) return mealMsg('要先設定雲端同步，才能請 AI 估算。可以先手動填熱量。');
+  $('#mest').disabled = true; mealMsg('估算中，大約 10–30 秒…');
+  try { const r = await api('POST', { kind: 'nutrition', text, image: ui.mealImg || undefined, media_type: 'image/jpeg' }), j = await r.json();
+    if (j.error) { $('#mest').disabled = false; return mealMsg((NUTRI_ERR[j.error] || '估算失敗：' + j.error) + (j.status ? `（${j.status}${j.message ? '：' + j.message : ''}）` : '')); }
+    ui.mealEst = j; if (!text) ui.mealText = j.name || ''; render();
+  } catch (e) { $('#mest').disabled = false; mealMsg('連線失敗，請稍後再試'); }
+};
+window.mealAdd = () => { const t = val('mt'); if (!t) return mealMsg('請先輸入這一餐的名稱'); const n = k => +val(k) || 0;
+  put('meal', { date: ui.dd, slot: val('ms'), text: t, note: val('mn'), kcal: n('mk'), protein_g: n('mp'), carbs_g: n('mc'), fat_g: n('mf'), items: ui.mealEst ? ui.mealEst.items : undefined, ai: !!ui.mealEst });
+  ui.mealEst = ui.mealImg = null; ui.mealText = ''; render(); };
+window.mealReset = () => { ui.mealEst = ui.mealImg = null; ui.mealText = ''; render(); };
+window.mealEdit = id => { ui.editMeal = id; render(); };
+window.mealSave = id => { const t = val('me_t'); if (!t) return; const n = k => +val(k) || 0; patch(id, { text: t, slot: val('me_s'), kcal: n('me_k'), protein_g: n('me_p'), carbs_g: n('me_c'), fat_g: n('me_f') }); ui.editMeal = null; render(); };
+const macroIn = (pre, m) => `<div class="row"><input id="${pre}k" type="number" inputmode="numeric" placeholder="熱量 kcal" value="${m.kcal || ''}"><input id="${pre}p" type="number" inputmode="numeric" placeholder="蛋白質 g" value="${m.protein_g || ''}"><input id="${pre}c" type="number" inputmode="numeric" placeholder="碳水 g" value="${m.carbs_g || ''}"><input id="${pre}f" type="number" inputmode="numeric" placeholder="脂肪 g" value="${m.fat_g || ''}"></div>`;
 function diet() {
-  const d = ui.dd, ms = all('meal').filter(m => m.date === d), wg = setting('water_goal', 8), c = cups(d), dates = weekDates(), logged = new Set(all('meal').map(m => m.date));
-  const kg = setting('kcal_goal', 1800), kcal = hv(d, 'diet_kcal'), P = hv(d, 'protein_g'), C = hv(d, 'carbs_g'), F = hv(d, 'fat_g'), mk = P * 4 + C * 4 + F * 9, ml = hv(d, 'water_ml');
+  const d = ui.dd, ms = mealsOf(d), wg = setting('water_goal', 8), c = cups(d), dates = weekDates(), E = ui.mealEst;
+  const kg = setting('kcal_goal', 1800), kcal = dayKcal(d), P = mealSum(d, 'protein_g') || hv(d, 'protein_g'), C = mealSum(d, 'carbs_g') || hv(d, 'carbs_g'), F = mealSum(d, 'fat_g') || hv(d, 'fat_g'), mk = P * 4 + C * 4 + F * 9;
   const macro = (n, g, k) => `<div style="display:flex;justify-content:space-between;margin-top:8px"><span>${n}</span><span class="mut">${g ? Math.round(g) + ' g · ' + Math.round(g * k / (mk || 1) * 100) + '%' : '–'}</span></div><div class="bar"><i style="width:${mk ? g * k / mk * 100 : 0}%"></i></div>`;
-  return hkNote() + `<div class="card"><div class="row"><input type="date" value="${d}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div></div>
-  <div class="card"><h2>攝取熱量 <a class="wl" onclick="kcalGoal()">目標 ${kg} kcal</a></h2>${num(kcal, 'kcal')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, kcal / kg * 100)}%;background:${kcal > kg ? 'var(--bad)' : 'var(--bar)'}"></i></div><div class="mut">${kcal ? (kcal > kg ? `超過目標 ${Math.round(kcal - kg)} kcal` : `還可以吃 ${Math.round(kg - kcal)} kcal`) : '這一天沒有健康資料'}${hv(d, 'active_kcal') ? ` · 活動消耗 ${Math.round(hv(d, 'active_kcal'))} kcal` : ''}</div></div>
+  const row = m => ui.editMeal === m.id
+    ? `<div class="item" style="display:block"><div class="row"><select id="me_s" style="flex:0 0 96px">${SLOTS.map(x => `<option ${x === m.slot ? 'selected' : ''}>${x}</option>`).join('')}</select><input id="me_t" value="${esc(m.text)}"></div>${macroIn('me_', m)}<div class="row"><button class="b" onclick="mealSave('${m.id}')">儲存</button><button class="b g" onclick="ui.editMeal=null;render()">取消</button></div></div>`
+    : `<div class="item"><span>${esc(m.text)}${m.kcal ? ` <b>${Math.round(m.kcal)}</b> <span class="mut">kcal${m.ai ? ' · AI 估算' : ''}</span>` : ''} <span class="mut">${esc(m.note || '')}</span></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="mealEdit('${m.id}')" aria-label="編輯">✎</button><button class="x" onclick="del('${m.id}')" aria-label="刪除">✕</button></span></div>`;
+  return `<div class="card"><div class="row"><input type="date" value="${d}" onchange="dietDate(this.value)"><button class="b g" onclick="dietDate('${today()}')">今天</button></div></div>
+  <div class="card"><h2>記錄一餐</h2><div class="row"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option ${x === ui.mealSlot ? 'selected' : ''}>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼（例：雞腿便當、半糖珍奶）" value="${esc(ui.mealText || '')}"></div>
+    <div class="row" style="align-items:center"><label class="b g" style="text-align:center;cursor:pointer;margin:4px 0">拍照／選照片<input type="file" accept="image/*" hidden onchange="mealPhoto(this)"></label><button class="b" id="mest" onclick="mealEstimate()">AI 估算熱量</button></div>
+    <img id="mpv" alt="這一餐的照片預覽" ${ui.mealImg ? `src="data:image/jpeg;base64,${ui.mealImg}"` : 'hidden'} class="mealpv">
+    <p class="mut" id="mst" style="margin:4px 0;min-height:1.3em">${E ? `估算完成（把握程度：${{ low: '低', medium: '中', high: '高' }[E.confidence] || '–'}）。${esc(E.note || '')}` : ''}</p>
+    ${E && E.items && E.items.length ? `<div style="margin-bottom:6px">${E.items.map(i => `<div class="item"><span>${esc(i.name)} <span class="mut">${esc(i.portion)}</span></span><span>${Math.round(i.kcal)} kcal</span></div>`).join('')}</div>` : ''}
+    ${macroIn('m', E || {})}<input id="mn" placeholder="備註：飽足感、心情（選填）">
+    <div class="row"><button class="b" onclick="mealAdd()">${E ? '確認並存入' : '存入'}</button>${E || ui.mealImg ? '<button class="b g" onclick="mealReset()">清除重來</button>' : ''}</div>
+    <p class="mut" style="margin:6px 0 0">AI 的數字是估計值，存入前可以直接修改。照片只用來估算，不會被保存。不用 AI 也可以自己填熱量。</p></div>
+  <div class="card"><h2>攝取熱量 <a class="wl" onclick="kcalGoal()">目標 ${kg} kcal</a></h2>${num(kcal, 'kcal')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, kcal / kg * 100)}%;background:${kcal > kg ? 'var(--bad)' : 'var(--bar)'}"></i></div><div class="mut">${kcal ? (kcal > kg ? `超過目標 ${Math.round(kcal - kg)} kcal` : `還可以吃 ${Math.round(kg - kcal)} kcal`) : '這一天還沒有記錄'}</div></div>
+  <div class="card"><h2>${d === today() ? '今日' : d} 餐點</h2>${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl} · ${Math.round(l.reduce((a, m) => a + (+m.kcal || 0), 0))} kcal</div>` + l.map(row).join('') : ''; }).join('') || '<p class="empty">這一天還沒有記錄</p>'}</div>
   <div class="card"><h2>三大營養素</h2>${macro('蛋白質', P, 4)}${macro('碳水化合物', C, 4)}${macro('脂肪', F, 9)}</div>
-  <div class="card"><h2>本週攝取熱量</h2>${bars(dates, dates.map(x => hv(x, 'diet_kcal')))}</div>
-  <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2>${ml ? `<div class="mut" style="margin-bottom:6px">Apple 健康：${Math.round(ml).toLocaleString()} ml</div>` : ''}
-    <div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">手動 ${c} / ${wg} 杯</div></div>
-  <details class="card"${ms.length ? ' open' : ''}><summary style="cursor:pointer"><b class="serif">手動記一餐</b></summary><div class="row" style="margin-top:10px"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div><input id="mn" placeholder="備註：份量、飽足感、心情（選填）"><button class="b" onclick="mealAdd()">記錄</button>
-    ${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl}</div>` + l.map(m => `<div class="item"><span>${esc(m.text)} <span class="mut">${esc(m.note)}</span></span><button class="x" onclick="del('${m.id}')">✕</button></div>`).join('') : ''; }).join('')}</details>`;
+  <div class="card"><h2>本週攝取熱量</h2>${bars(dates, dates.map(dayKcal))}</div>
+  <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2><div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>`;
 }
 
 // ---------- 未來目標（人生／5・3・1 年／今年 ＋ 曼陀羅九宮格） ----------
@@ -462,7 +492,7 @@ function home() {
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: hv(today(), 'diet_kcal') ? `今日 ${Math.round(hv(today(), 'diet_kcal'))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(F.out)}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date), ...all('health').filter(x => x.exercise_min > 0).map(x => x.date)]);
   return `<div class="card hero full" data-b="hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>

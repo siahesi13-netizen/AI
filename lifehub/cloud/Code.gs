@@ -39,11 +39,46 @@ function healthChange_(body, all, index) {
 const ALIAS = { exercise: 'exercise_min', exercisemin: 'exercise_min', active: 'active_kcal', activekcal: 'active_kcal', distance: 'distance_km', distancekm: 'distance_km', kcal: 'diet_kcal', diet: 'diet_kcal', dietkcal: 'diet_kcal', protein: 'protein_g', proteing: 'protein_g', carbs: 'carbs_g', carbsg: 'carbs_g', fat: 'fat_g', fatg: 'fat_g', water: 'water_ml', waterml: 'water_ml', sleep: 'sleep_h', sleeph: 'sleep_h', weight: 'weight_kg', weightkg: 'weight_kg', cycle: 'cycle_km', cyclekm: 'cycle_km', bike: 'cycle_km', cyclespeed: 'cycle_speed', speed: 'cycle_speed', cyclecadence: 'cycle_cadence', cadence: 'cycle_cadence', cyclepower: 'cycle_power', power: 'cycle_power' };
 function normBody_(raw) { const o = {}; Object.keys(raw || {}).forEach(k => { const n = String(k).trim().toLowerCase(); o[ALIAS[n.replace(/_/g, '')] || n] = raw[k]; }); if (typeof o.kind === 'string') o.kind = o.kind.trim().toLowerCase(); return o; }
 
+// ---------- 飲食熱量估算（Claude API） ----------
+// 前端 POST { token, kind:"nutrition", text?, image?(base64 JPEG), media_type? }；Anthropic 金鑰只存在「指令碼屬性」ANTHROPIC_API_KEY，不會傳到前端。
+// Apps Script 沒有官方 Anthropic SDK，所以用 UrlFetchApp 直接呼叫 Messages API。
+const NUTRI_SCHEMA = { type: 'object', additionalProperties: false,
+  required: ['name', 'items', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'confidence', 'note'],
+  properties: {
+    name: { type: 'string', description: '這一餐的簡短名稱（繁體中文）' },
+    items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'portion', 'kcal'],
+      properties: { name: { type: 'string' }, portion: { type: 'string', description: '估計份量，例如「一碗約 200 克」' }, kcal: { type: 'number' } } } },
+    kcal: { type: 'number', description: '整餐總熱量（大卡）' },
+    protein_g: { type: 'number' }, carbs_g: { type: 'number' }, fat_g: { type: 'number' },
+    confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
+    note: { type: 'string', description: '一句話說明估算依據或最大的不確定因素（繁體中文）' } } };
+function nutrition_(body) {
+  const key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!key) return { error: 'no api key' };
+  const text = String(body.text || '').trim(), content = [];
+  if (!text && !body.image) return { error: 'empty' };
+  if (body.image) content.push({ type: 'image', source: { type: 'base64', media_type: body.media_type || 'image/jpeg', data: body.image } });
+  content.push({ type: 'text', text: text ? '請估算這一餐的熱量與三大營養素。使用者的描述：' + text : '請依照片估算這一餐的熱量與三大營養素。' });
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+    payload: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 16000, fallbacks: 'default',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: NUTRI_SCHEMA } },
+      system: '你是營養估算助手，使用者在台灣。根據文字描述與（或）照片，辨識餐點中的每一項食物，估計份量，再估算熱量與蛋白質、碳水化合物、脂肪的克數。台灣常見的小吃、便當、手搖飲請用當地常見的份量與做法來估。照片與描述不一致時，以使用者的描述為準並在 note 說明。看不清楚或資訊不足時仍給出最合理的估計，把 confidence 設為 low，並在 note 說明還需要什麼資訊。所有文字用繁體中文，數字四捨五入到整數。',
+      messages: [{ role: 'user', content: content }] }) });
+  const code = res.getResponseCode(); let j = {}; try { j = JSON.parse(res.getContentText()); } catch (err) { return { error: 'bad response', status: code }; }
+  if (code !== 200) return { error: 'api error', status: code, message: (j.error && j.error.message) || '' };
+  if (j.stop_reason === 'refusal') return { error: 'refused' };
+  if (j.stop_reason === 'max_tokens') return { error: 'truncated' };
+  const t = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  try { return Object.assign({ ok: true }, JSON.parse(t)); } catch (err) { return { error: 'bad json' }; }
+}
+
 function doPost(e) {
   let raw = {}; try { raw = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return out_({ error: 'bad json' }); }
   const body = normBody_(raw);
   // 診斷資訊只含欄位名稱與金鑰長度，不含金鑰內容
   if (!authed_(body.token)) return out_({ error: 'bad token', hint: { keys: Object.keys(raw), tokenType: typeof body.token, tokenLength: body.token === undefined || body.token === null ? 0 : String(body.token).length, expectedLength: String(PropertiesService.getScriptProperties().getProperty('TOKEN') || '').trim().length } });
+  if (body.kind === 'nutrition') return out_(nutrition_(raw)); // 不寫入試算表，也不需要鎖
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sh = sheet_(), all = rows_(sh), index = {};
@@ -70,3 +105,6 @@ function dailyBackup() { const it = DriveApp.getFoldersByName('LifeHub 備份');
 
 // 只需手動執行一次：建立每天凌晨 3 點的備份觸發條件（重複執行不會重複建立），並立刻備份一次。
 function installBackupTrigger() { ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'dailyBackup').forEach(t => ScriptApp.deleteTrigger(t)); ScriptApp.newTrigger('dailyBackup').timeBased().everyDays(1).atHour(3).create(); dailyBackup(); }
+
+// 只需手動執行一次：讓 Google 詢問「連線到外部服務」的授權（飲食估算要呼叫 Claude API）。
+function authorizeExternal() { const r = UrlFetchApp.fetch('https://api.anthropic.com/v1/models', { muteHttpExceptions: true }); Logger.log('外部連線授權完成，測試回應碼：' + r.getResponseCode() + '；API 金鑰' + (PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY') ? '已設定' : '尚未設定')); }
