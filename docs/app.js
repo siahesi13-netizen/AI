@@ -1,4 +1,4 @@
-const APP_VERSION = '1.27.2';
+const APP_VERSION = '1.27.3';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -346,6 +346,8 @@ window.finPick = () => finMonth(pKey($('#finPick_y').value, $('#finPick_m').valu
 // ---------- 公司代墊（個人財務的分頁）：分類名稱含「代墊」的帳。支出＝我先墊的錢，收入＝公司回款 ----------
 // 手上應有的代墊款＝起算日以來（公司撥款與回款 − 代墊支出）＋手動調整。手動調整用來補記帳檔裡沒有的收付（例如同事直接匯還）
 window.advAdjAdd = () => { const a = prompt('調整金額（收到錢填正數，付出去填負數）'); if (a === null || !+a) return; const n = prompt('說明（例：同事匯還某筆代墊）', ''); if (n === null) return; const d = prompt('日期（yyyy-mm-dd）', today()); if (d === null) return; setSetting('advadj', [...setting('advadj', []), { amount: +a, note: n.trim(), date: /^\d{4}-\d{2}-\d{2}$/.test(d.trim()) ? d.trim() : today() }]); render(); };
+window.advClaimDone = i => { const C = setting('advclaim', null); if (!C || !C.items) return; const items = C.items.map((x, k) => k === i ? { ...x, done: x.done ? '' : today() } : x); setSetting('advclaim', { ...C, items }); render(); };
+window.advClaimAdd = () => { const C = setting('advclaim', null) || { cutoff: today(), asOf: today(), items: [] }, desc = prompt('請款內容（例：啾寶 10 月交通費）'); if (!desc) return; const amt = +prompt('金額', '') || 0; if (!amt) return; const d = prompt('送出日期（yyyy-mm-dd）', today()); if (d === null) return; setSetting('advclaim', { ...C, items: [...(C.items || []), { date: /^\d{4}-\d{2}-\d{2}$/.test(d.trim()) ? d.trim() : today(), desc: desc.trim(), amount: amt, done: '' }] }); render(); };
 window.advFund = () => { const a = prompt('公司總共給你的零用金金額', setting('advfund', 0)); if (a === null) return; setSetting('advfund', +a || 0); render(); };
 window.advFloat = id => { const F = setting('advfloat', []); setSetting('advfloat', F.includes(id) ? F.filter(x => x !== id) : [...F, id]); render(); };
 window.advAdjDel = i => { if (!confirm('刪除這筆調整？')) return; setSetting('advadj', setting('advadj', []).filter((_, k) => k !== i)); render(); };
@@ -361,11 +363,14 @@ function advView() {
   const fund = setting('advfund', 0), FL = setting('advfloat', []), INC = A.filter(x => x.type === 'in').sort((a, b) => b.date.localeCompare(a.date)), floSum = INC.filter(x => FL.includes(x.id)).reduce((a, x) => a + x.amount, 0), reimb = allBack - floSum;
   const hand = fund - allOut + reimb + adj;
   // 依公司的代墊明細計算：零用金 − 已請款但公司還沒回款 − 請款截止日之後墊出、還沒請款的（記帳裡的代墊支出；claimed 列出截止日後已送出請款的筆數，避免重複扣）
-  const CL = setting('advclaim', null), un = CL ? A.filter(x => x.type === 'out' && x.date > CL.cutoff && !(CL.claimed || []).some(c => c.date === x.date && c.amount === x.amount)).sort((a, b) => a.date.localeCompare(b.date)) : [], unSum = un.reduce((a, x) => a + x.amount, 0), hand2 = CL ? fund - CL.pending - unSum : null;
+  const CL = setting('advclaim', null), un = CL ? A.filter(x => x.type === 'out' && x.date > CL.cutoff && !(CL.claimed || []).some(c => c.date === x.date && c.amount === x.amount)).sort((a, b) => a.date.localeCompare(b.date)) : [], unSum = un.reduce((a, x) => a + x.amount, 0), IT = CL ? (CL.items || []).map((x, i) => ({ ...x, i })) : [], open_ = IT.filter(x => !x.done), pending = CL ? (CL.items ? open_.reduce((a, x) => a + x.amount, 0) : CL.pending || 0) : 0, hand2 = CL ? fund - pending - unSum : null;
   return `<div class="card" data-b="hand">${CL ? `<div class="eyebrow">零用金應該剩下（依公司代墊明細）</div><div class="big ${hand2 < 0 ? 'bad' : ''}">${money(hand2)}</div>
   <p class="mut" style="margin:6px 0 8px">公司明細更新到 ${esc(CL.asOf)}。${esc(CL.note || '')}</p>
   <div class="item"><span>公司給的零用金 <a class="wl mut" onclick="advFund()">修改</a></span><b>${money(fund)}</b></div>
-  <div class="item"><span>已請款、公司還沒回款 <span class="mut">${esc(CL.pendingNote || '')}</span></span><b class="bad">-${money(CL.pending)}</b></div>
+  <div class="item"><span>已請款、公司還沒回款 <span class="mut">${CL.items ? `${open_.length} 張單據` : esc(CL.pendingNote || '')}</span></span><b class="bad">-${money(pending)}</b></div>
+  ${CL.items ? `<div style="margin:4px 0 6px;padding:8px 10px;border-radius:10px;background:var(--tagbg)"><div class="mut" style="margin-bottom:4px">公司回款時把對應的單據打勾；合併回款就一次勾多張。</div>${open_.map(x => `<label class="item" style="cursor:pointer"><span><input type="checkbox" style="width:auto;margin:0 8px 0 0" onchange="advClaimDone(${x.i})">${esc(x.date.slice(5))} ${esc(x.desc)}</span><b>${money(x.amount)}</b></label>`).join('') || '<p class="mut" style="margin:4px 0">目前沒有等待回款的單據</p>'}
+  <p class="mut" style="margin:6px 0 0"><a class="wl" onclick="advClaimAdd()">新增已送出的請款</a>${IT.some(x => x.done) ? `・<a class="wl" onclick="ui.advDone=!ui.advDone;render()">${ui.advDone ? '收起' : '看'}已回款的 ${IT.filter(x => x.done).length} 張</a>` : ''}</p>
+  ${ui.advDone ? IT.filter(x => x.done).map(x => `<div class="item mut"><span>${esc(x.date.slice(5))} ${esc(x.desc)}・${esc(x.done)} 回款 <a class="wl" onclick="advClaimDone(${x.i})">取消</a></span><span>${money(x.amount)}</span></div>`).join('') : ''}</div>` : ''}
   <div class="item"><span>${esc(CL.cutoff)} 之後墊出、還沒請款 <span class="mut">記帳裡 ${un.length} 筆</span></span><b class="bad">-${money(unSum)}</b></div>
   <details style="margin-top:8px"><summary class="mut" style="cursor:pointer">還沒請款的 ${un.length} 筆</summary>${un.map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.note || x.cat)}</span><b>${money(x.amount)}</b></div>`).join('')}</details>
   <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">用記帳流水推算（僅供對照）：${money(hand)}</summary>
