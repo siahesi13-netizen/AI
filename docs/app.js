@@ -1,4 +1,4 @@
-const APP_VERSION = '1.27.1';
+const APP_VERSION = '1.27.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -360,8 +360,8 @@ function advView() {
   // 公司給的零用金（一筆固定金額）經過代墊支出與報帳回款後應該剩多少。記帳檔裡若把「公司撥零用金」也記成收入，要標記出來，才不會重複算
   const fund = setting('advfund', 0), FL = setting('advfloat', []), INC = A.filter(x => x.type === 'in').sort((a, b) => b.date.localeCompare(a.date)), floSum = INC.filter(x => FL.includes(x.id)).reduce((a, x) => a + x.amount, 0), reimb = allBack - floSum;
   const hand = fund - allOut + reimb + adj;
-  // 依公司的代墊明細計算：零用金 − 已請款但公司還沒回款 − 請款截止日之後墊出、還沒請款的（記帳裡的代墊支出）
-  const CL = setting('advclaim', null), un = CL ? A.filter(x => x.type === 'out' && x.date > CL.cutoff).sort((a, b) => a.date.localeCompare(b.date)) : [], unSum = un.reduce((a, x) => a + x.amount, 0), hand2 = CL ? fund - CL.pending - unSum : null;
+  // 依公司的代墊明細計算：零用金 − 已請款但公司還沒回款 − 請款截止日之後墊出、還沒請款的（記帳裡的代墊支出；claimed 列出截止日後已送出請款的筆數，避免重複扣）
+  const CL = setting('advclaim', null), un = CL ? A.filter(x => x.type === 'out' && x.date > CL.cutoff && !(CL.claimed || []).some(c => c.date === x.date && c.amount === x.amount)).sort((a, b) => a.date.localeCompare(b.date)) : [], unSum = un.reduce((a, x) => a + x.amount, 0), hand2 = CL ? fund - CL.pending - unSum : null;
   return `<div class="card" data-b="hand">${CL ? `<div class="eyebrow">零用金應該剩下（依公司代墊明細）</div><div class="big ${hand2 < 0 ? 'bad' : ''}">${money(hand2)}</div>
   <p class="mut" style="margin:6px 0 8px">公司明細更新到 ${esc(CL.asOf)}。${esc(CL.note || '')}</p>
   <div class="item"><span>公司給的零用金 <a class="wl mut" onclick="advFund()">修改</a></span><b>${money(fund)}</b></div>
