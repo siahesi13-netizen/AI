@@ -1,4 +1,4 @@
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.27.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -360,14 +360,23 @@ function advView() {
   // 公司給的零用金（一筆固定金額）經過代墊支出與報帳回款後應該剩多少。記帳檔裡若把「公司撥零用金」也記成收入，要標記出來，才不會重複算
   const fund = setting('advfund', 0), FL = setting('advfloat', []), INC = A.filter(x => x.type === 'in').sort((a, b) => b.date.localeCompare(a.date)), floSum = INC.filter(x => FL.includes(x.id)).reduce((a, x) => a + x.amount, 0), reimb = allBack - floSum;
   const hand = fund - allOut + reimb + adj;
-  return `<div class="card" data-b="hand"><div class="eyebrow">零用金應該剩下</div><div class="big ${hand < 0 ? 'bad' : ''}">${money(hand)}</div>
-  <p class="mut" style="margin:6px 0 8px">${hand < 0 ? '算出來是負的，代表你自己先墊了這麼多、公司還沒還。' : hand > fund && fund ? '算出來比公司給的零用金還多，通常是有代墊支出還沒記，或下面有零用金撥款沒標記。' : '公司給的零用金，扣掉代墊支出、加回報帳回款後應該剩下的金額。'}記帳資料到 ${esc(lastDate || '—')}，之後的收付還沒算進來。</p>
+  // 依公司的代墊明細計算：零用金 − 已請款但公司還沒回款 − 請款截止日之後墊出、還沒請款的（記帳裡的代墊支出）
+  const CL = setting('advclaim', null), un = CL ? A.filter(x => x.type === 'out' && x.date > CL.cutoff).sort((a, b) => a.date.localeCompare(b.date)) : [], unSum = un.reduce((a, x) => a + x.amount, 0), hand2 = CL ? fund - CL.pending - unSum : null;
+  return `<div class="card" data-b="hand">${CL ? `<div class="eyebrow">零用金應該剩下（依公司代墊明細）</div><div class="big ${hand2 < 0 ? 'bad' : ''}">${money(hand2)}</div>
+  <p class="mut" style="margin:6px 0 8px">公司明細更新到 ${esc(CL.asOf)}。${esc(CL.note || '')}</p>
+  <div class="item"><span>公司給的零用金 <a class="wl mut" onclick="advFund()">修改</a></span><b>${money(fund)}</b></div>
+  <div class="item"><span>已請款、公司還沒回款 <span class="mut">${esc(CL.pendingNote || '')}</span></span><b class="bad">-${money(CL.pending)}</b></div>
+  <div class="item"><span>${esc(CL.cutoff)} 之後墊出、還沒請款 <span class="mut">記帳裡 ${un.length} 筆</span></span><b class="bad">-${money(unSum)}</b></div>
+  <details style="margin-top:8px"><summary class="mut" style="cursor:pointer">還沒請款的 ${un.length} 筆</summary>${un.map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.note || x.cat)}</span><b>${money(x.amount)}</b></div>`).join('')}</details>
+  <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">用記帳流水推算（僅供對照）：${money(hand)}</summary>
+  ` : `<div class="eyebrow">零用金應該剩下</div><div class="big ${hand < 0 ? 'bad' : ''}">${money(hand)}</div>
+  <p class="mut" style="margin:6px 0 8px">${hand < 0 ? '算出來是負的，代表你自己先墊了這麼多、公司還沒還。' : hand > fund && fund ? '算出來比公司給的零用金還多，通常是有代墊支出還沒記，或下面有零用金撥款沒標記。' : '公司給的零用金，扣掉代墊支出、加回報帳回款後應該剩下的金額。'}記帳資料到 ${esc(lastDate || '—')}，之後的收付還沒算進來。</p>`}
   <div class="item"><span>公司給的零用金 <a class="wl mut" onclick="advFund()">修改</a></span><b>${money(fund)}</b></div>
   <div class="item"><span>代墊支出 <span class="mut">${start ? `自 ${esc(start)} 起` : '全部'}</span></span><b class="bad">-${money(allOut)}</b></div>
   <div class="item"><span>報帳回款 <span class="mut">${floSum ? `不含零用金撥款 ${money(floSum)}` : '記帳裡所有代墊收入'}</span></span><b class="ok">+${money(reimb)}</b></div>
   ${ADJ.map(x => `<div class="item"><span>調整：${esc(x.note || '未註明')} <span class="mut">${esc(x.date)}</span></span><span><b class="${x.amount >= 0 ? 'ok' : 'bad'}">${sg(x.amount)}</b><button class="x" onclick="advAdjDel(${x.i})">✕</button></span></div>`).join('')}
   <p class="mut" style="margin:8px 0 0"><a class="wl" onclick="advAdjAdd()">新增調整</a>（記帳檔沒記到的收付，例如同事直接匯還）</p>
-  <details style="margin-top:10px" ${ui.advfl ? 'open' : ''} ontoggle="ui.advfl=this.open"><summary class="mut" style="cursor:pointer">哪些收入其實是公司撥的零用金？（已標記 ${FL.filter(id => INC.some(x => x.id === id)).length} 筆）</summary><p class="mut" style="margin:6px 0">打勾的那幾筆是公司撥給你的零用金本身，不算報帳回款。</p>${INC.map(x => `<label class="item" style="cursor:pointer"><span><input type="checkbox" style="width:auto;margin:0 8px 0 0" ${FL.includes(x.id) ? 'checked' : ''} onchange="advFloat('${x.id}')">${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b>${money(x.amount)}</b></label>`).join('')}</details></div>
+  <details style="margin-top:10px" ${ui.advfl ? 'open' : ''} ontoggle="ui.advfl=this.open"><summary class="mut" style="cursor:pointer">哪些收入其實是公司撥的零用金？（已標記 ${FL.filter(id => INC.some(x => x.id === id)).length} 筆）</summary><p class="mut" style="margin:6px 0">打勾的那幾筆是公司撥給你的零用金本身，不算報帳回款。</p>${INC.map(x => `<label class="item" style="cursor:pointer"><span><input type="checkbox" style="width:auto;margin:0 8px 0 0" ${FL.includes(x.id) ? 'checked' : ''} onchange="advFloat('${x.id}')">${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b>${money(x.amount)}</b></label>`).join('')}</details>${CL ? '</details>' : ''}</div>
   <div class="card" data-b="sum">${pSelect(key, years, 'advPick')}
   <div class="grid" style="margin-top:10px"><div><div class="eyebrow">${pLabel(key)}代墊支出</div><div class="big bad">${money(out)}</div></div><div><div class="eyebrow">公司回款</div><div class="big ok">${money(back)}</div></div></div>
   <p style="margin:10px 0 0">${out - back > 0 ? `這段期間還有 <b class="bad">${money(out - back)}</b> 沒回來` : out - back < 0 ? `這段期間回款比支出多 <b class="ok">${money(back - out)}</b>（含之前墊的）` : '這段期間支出與回款相等'}</p>
