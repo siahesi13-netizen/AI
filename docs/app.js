@@ -1,4 +1,4 @@
-const APP_VERSION = '1.26.1';
+const APP_VERSION = '1.27.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -614,6 +614,8 @@ const hlId = (h, d) => `hl_${h}_${d}`, hDone = (h, d) => !!DB[hlId(h, d)] && !DB
 const habitVotes = h => all('habitlog').filter(l => l.habit === h).length;
 function habitStreak(h) { let n = 0, d = new Date(); if (!hDone(h, today())) d.setDate(d.getDate() - 1); while (hDone(h, iso(d))) { n++; d.setDate(d.getDate() - 1); } return n; }
 window.habitToggle = (h, d) => { if (d > today()) return; if (hDone(h, d)) del(hlId(h, d)); else { put('habitlog', { habit: h, date: d }, hlId(h, d)); render(); } };
+// 修改習慣：依序詢問名稱、身分、提示、兩分鐘版本；按取消就保留原值。打勾紀錄以 id 連結，改名不影響
+window.habitEdit = id => { const h = DB[id].data, F = [['name', '習慣名稱'], ['identity', '身分：我是一個…的人'], ['cue', '提示：在什麼之後做'], ['tiny', '兩分鐘版本']], p = {}; for (const [k, l] of F) { const v = prompt(l, h[k] || ''); if (v === null) continue; if (k === 'name' && !v.trim()) continue; p[k] = v.trim(); } if (Object.keys(p).length) { patch(id, p); render(); } };
 window.habitAdd = () => { const n = val('hn'); if (!n) return; put('habit', { name: n, identity: val('hi'), cue: val('hc'), tiny: val('ht'), created: today() }); render(); };
 window.habitWeek = o => { ui.wk = o === 0 ? 0 : ui.wk + o; render(); };
 const hChecks = (h, dates) => `<div class="hw">${dates.map((d, i) => `<button class="hc ${hDone(h.id, d) ? 'on' : ''} ${d === today() ? 'td' : ''}" ${d > today() ? 'disabled' : ''} onclick="habitToggle('${h.id}','${d}')" aria-label="${d}"><small>${WD[i]}</small></button>`).join('')}</div>`;
@@ -623,7 +625,7 @@ function habit() {
   return `<div class="card"><div class="row" style="align-items:center"><button class="b g" style="flex:0 0 44px" onclick="habitWeek(-1)">‹</button><div style="text-align:center"><b class="serif">${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}</b><div class="mut">${ui.wk === 0 ? '本週' : `<a class="wl" onclick="habitWeek(0)">回到本週</a>`}</div></div><button class="b g" style="flex:0 0 44px" onclick="habitWeek(1)" ${ui.wk >= 0 ? 'disabled' : ''}>›</button></div>
     <div class="grid" style="margin-top:10px"><div><div class="eyebrow">本週完成</div><div class="big">${wkDone}<small class="mut"> / ${wkMax}</small></div></div><div><div class="eyebrow">累計投票</div><div class="big">${total}</div></div></div>
     <div class="bar" style="margin-top:8px"><i style="width:${wkMax ? wkDone / wkMax * 100 : 0}%"></i></div></div>
-  <div data-b="habits">${hs.map(h => { const n = dates.filter(d => hDone(h.id, d)).length; return `<div class="card"><div class="item" style="border:0;padding:0 0 6px"><span><b>${esc(h.name)}</b>${h.identity ? ` <span class="tag">${esc(h.identity)}</span>` : ''}</span><button class="x" onclick="confirm('刪除這個習慣？紀錄會保留在雲端備份')&&del('${h.id}')">✕</button></div>
+  <div data-b="habits">${hs.map(h => { const n = dates.filter(d => hDone(h.id, d)).length; return `<div class="card"><div class="item" style="border:0;padding:0 0 6px"><span><b>${esc(h.name)}</b>${h.identity ? ` <span class="tag">${esc(h.identity)}</span>` : ''}</span><span><button class="x" onclick="habitEdit('${h.id}')" aria-label="編輯" title="修改名稱、身分、提示、兩分鐘版本">✎</button><button class="x" onclick="confirm('刪除這個習慣？紀錄會保留在雲端備份')&&del('${h.id}')">✕</button></span></div>
     ${h.cue || h.tiny ? `<div class="mut" style="margin-bottom:8px">${esc(h.cue)}${h.cue && h.tiny ? ' → ' : ''}${esc(h.tiny)}</div>` : ''}${hChecks(h, dates)}
     <div class="mut" style="margin-top:8px">本週 ${n}/7 · 連續 ${habitStreak(h.id)} 天 · 累計 ${habitVotes(h.id)} 票</div></div>`; }).join('') || '<div class="card"><p class="empty">還沒有習慣。從一個兩分鐘就能做完的小動作開始。</p></div>'}</div>
   <details class="card"${hs.length ? '' : ' open'}><summary style="cursor:pointer"><b class="serif">新增習慣</b></summary><input id="hn" style="margin-top:10px" placeholder="習慣名稱（例：晨間伸展）"><input id="hi" placeholder="身分：我是一個…的人（例：重視身體的人）"><input id="hc" placeholder="提示：在什麼之後做（例：起床喝完水之後）"><input id="ht" placeholder="兩分鐘版本（例：鋪開瑜珈墊伸展 2 分鐘）"><button class="b" onclick="habitAdd()">建立</button>
@@ -707,7 +709,6 @@ window.noteOpen = t => { const n = all('note').find(x => x.title === t); if (n) 
 window.noteFilter = (k, v) => { ui[k] = v; render(); };
 window.readAdd = () => { const t = val('rt'); if (!t) return; put('book', { title: t, author: val('ra'), status: 'want', pages: +val('rp') || 0, cur: 0, rating: 0, note: '' }); render(); };
 window.readSet = (id, p) => { patch(id, p); render(); };
-window.readProg = id => { const b = DB[id].data, c = prompt('目前讀到第幾頁？' + (b.pages ? `（共 ${b.pages} 頁）` : ''), b.cur); if (c === null) return; const cur = +c; patch(id, { cur, status: b.pages && cur >= b.pages ? 'done' : 'reading' }); render(); };
 window.readNote = id => { const n = prompt('心得 / 摘要', DB[id].data.note); if (n !== null) { patch(id, { note: n }); render(); } };
 window.readRate = (id, r) => readSet(id, { rating: r });
 // 知識小卡：依梅棹忠夫《知的生產技術》的卡片法——一卡一事、標題＋完整句子＋日期、不急著分類、常翻閱並重新排列組合
@@ -734,13 +735,28 @@ function notes() {
   <div class="kgrid">${list.map(card).join('')}</div>${list.length ? '' : '<div class="card"><p class="empty">還沒有小卡。讀到、想到一件事，就寫一張。</p></div>'}
   <p class="mut" style="margin:12px 2px">卡片法：一卡一事、寫完整句子、標上日期；不急著分類，常常翻、把不相干的卡片並排，新的想法會從組合裡出來。</p>`;
 }
+// 書單：上方切換狀態、選排序；每本書一張卡（抽象色塊封面、進度、評分、操作）。pages 為 100 且 src 為 kobo 的書，進度以百分比記錄
+const BOOK_ST = [['reading', '閱讀中'], ['want', '想讀'], ['done', '已讀完'], ['all', '全部']];
+const BOOK_SORT = [['recent', '最近更新'], ['progress', '進度'], ['title', '書名'], ['author', '作者'], ['rating', '評分']];
+const bookPct = b => b.status === 'done' ? 100 : b.pages ? Math.min(100, Math.round(b.cur / b.pages * 100)) : 0;
+const bookHue = t => { let h = 0; for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+window.readProg = id => { const b = DB[id].data, isPct = b.pages === 100 && b.src === 'kobo', c = prompt(isPct ? '目前讀到幾 %？' : '目前讀到第幾頁？' + (b.pages ? `（共 ${b.pages} 頁）` : ''), b.cur); if (c === null) return; const cur = Math.max(0, +c || 0); patch(id, { cur, status: b.pages && cur >= b.pages ? 'done' : 'reading' }); render(); };
+window.readEdit = id => { const b = DB[id].data, t = prompt('書名', b.title); if (t === null) return; const a = prompt('作者', b.author || ''); if (a === null) return; patch(id, { title: t.trim() || b.title, author: a.trim() }); render(); };
 function reading() {
-  const bs = all('book'), G = { reading: '閱讀中', want: '想讀', done: '已讀完' };
-  return `<div class="card"><h2>加入書單</h2><input id="rt" placeholder="書名"><div class="row"><input id="ra" placeholder="作者"><input id="rp" type="number" placeholder="頁數"></div><button class="b" onclick="readAdd()">加入</button></div>
-  ${Object.entries(G).map(([s, label]) => { const l = bs.filter(b => b.status === s); return l.length ? `<div class="card"><h2>${label}（${l.length}）</h2>${l.map(b => `<div class="item" style="display:block"><div class="row" style="align-items:center"><b style="flex:3">${esc(b.title)} <span class="mut">${esc(b.author)}</span></b><button class="x" style="flex:0" onclick="del('${b.id}')">✕</button></div>
-    ${b.pages ? `<div class="bar"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><span class="mut">${b.cur}/${b.pages} 頁</span>` : ''}
-    <div class="mut"><a class="wl" onclick="readProg('${b.id}')">更新進度</a> · <a class="wl" onclick="readNote('${b.id}')">心得</a>${s !== 'reading' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'reading'})">開始讀</a>` : ''}${s !== 'done' ? ` · <a class="wl" onclick="readSet('${b.id}',{status:'done'})">讀完</a>` : ''}
-    <span style="float:right">${[1, 2, 3, 4, 5].map(r => `<a onclick="readRate('${b.id}',${r})" style="cursor:pointer">${r <= b.rating ? '★' : '☆'}</a>`).join('')}</span></div>${b.note ? `<pre class="mut">${esc(b.note)}</pre>` : ''}</div>`).join('')}</div>` : ''; }).join('') || ''}`;
+  const bs = all('book').map(b => ({ ...b, at: (DB[b.id] || {}).updated_at || 0 })), st = ui.rst || 'reading', so = ui.rsort || 'recent', n = k => k === 'all' ? bs.length : bs.filter(b => b.status === k).length;
+  const cmp = { recent: (a, b) => b.at - a.at, progress: (a, b) => bookPct(b) - bookPct(a) || b.at - a.at, title: (a, b) => a.title.localeCompare(b.title, 'zh-Hant'), author: (a, b) => (a.author || '').localeCompare(b.author || '', 'zh-Hant') || a.title.localeCompare(b.title, 'zh-Hant'), rating: (a, b) => (b.rating || 0) - (a.rating || 0) || b.at - a.at }[so];
+  const L = bs.filter(b => st === 'all' || b.status === st).sort(cmp), lab = Object.fromEntries(BOOK_ST);
+  const card = b => { const pc = bookPct(b), isPct = b.pages === 100 && b.src === 'kobo', hue = bookHue(b.title);
+    return `<div class="bk"><div class="bkc" style="background:hsl(${hue} 22% 62%)"><span>${esc(b.title.slice(0, 14))}</span></div><div class="bkb">
+      <div class="bkt"><b>${esc(b.title)}</b><span><button class="x" onclick="readEdit('${b.id}')" aria-label="編輯">✎</button><button class="x" onclick="confirm('從書單刪除這本書？')&&del('${b.id}')" aria-label="刪除">✕</button></span></div>
+      <div class="mut">${esc(b.author || '')}${st === 'all' ? `${b.author ? '・' : ''}${lab[b.status] || ''}` : ''}</div>
+      ${b.status !== 'want' ? `<div class="bar" style="margin:8px 0 2px"><i style="width:${pc}%"></i></div><div class="mut">${b.status === 'done' ? '已讀完' : isPct ? `${b.cur}%` : b.pages ? `${b.cur}/${b.pages} 頁・${pc}%` : '尚未記錄進度'}</div>` : ''}
+      <div class="bka"><span>${b.status !== 'done' ? `<a class="wl" onclick="readProg('${b.id}')">更新進度</a>` : ''}${b.status === 'want' ? ` <a class="wl" onclick="readSet('${b.id}',{status:'reading'})">開始讀</a>` : ''}${b.status === 'reading' ? ` <a class="wl" onclick="readSet('${b.id}',{status:'done'})">讀完</a>` : ''} <a class="wl" onclick="readNote('${b.id}')">心得</a></span><span class="stars">${[1, 2, 3, 4, 5].map(r => `<a onclick="readRate('${b.id}',${r})">${r <= (b.rating || 0) ? '★' : '☆'}</a>`).join('')}</span></div>
+      ${b.note ? `<pre class="mut" style="margin:6px 0 0">${esc(b.note)}</pre>` : ''}</div></div>`; };
+  return `<div class="card" data-b="books"><div class="seg" style="margin-bottom:10px">${BOOK_ST.map(([k, l]) => `<button class="${st === k ? 'on' : ''}" onclick="ui.rst='${k}';render()">${l} ${n(k)}</button>`).join('')}</div>
+  <div class="row" style="align-items:center;margin:0 0 6px"><span class="mut" style="flex:none">排序</span><select onchange="ui.rsort=this.value;render()" aria-label="排序">${BOOK_SORT.map(([k, l]) => `<option value="${k}" ${so === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="bks">${L.map(card).join('') || `<p class="empty">${st === 'all' ? '書單是空的' : `沒有${lab[st]}的書`}</p>`}</div></div>
+  <details class="card" data-b="add"><summary style="cursor:pointer"><b class="serif">加入書單</b></summary><input id="rt" style="margin-top:10px" placeholder="書名"><div class="row"><input id="ra" placeholder="作者"><input id="rp" type="number" placeholder="頁數"></div><button class="b" onclick="readAdd()">加入</button></details>`;
 }
 // Commonplace book＋第二大腦（Tiago Forte）：擷取 Capture → 整理 Organize（PARA）→ 萃取 Distill（一句話重點）→ 表達 Express（轉成小卡）
 const PARA = [['P', '專案'], ['A', '領域'], ['R', '資源'], ['X', '封存']];
@@ -773,7 +789,7 @@ function commonplace() {
     <div class="row"><select id="cpa" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${k === (E ? E.para || 'R' : 'R') ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b" style="flex:2" onclick="cpAdd()">${E ? '儲存修改' : '收進靈感'}</button>${E ? `<button class="b g" onclick="ui.cpEd=null;render()">取消</button>` : ''}</div></div>
   <div class="row" style="align-items:center"><input placeholder="搜尋摘錄" value="${esc(ui.cq)}" onchange="ui.cq=this.value;render()"></div>
   <div class="seg" style="margin-top:6px">${[['', '全部'], ...PARA].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" onclick="ui.cpf='${k}';render()">${n}</button>`).join('')}</div>
-  <div data-b="quotes">${qs.map(x => `<div class="card"><blockquote class="qt">${esc(x.text)}</blockquote><div class="mut" style="display:flex;justify-content:space-between"><span>— ${esc(x.src) || '未註明出處'}${x.page ? `，p.${esc(x.page)}` : ''}</span><span style="flex:none;white-space:nowrap"><button class="x" onclick="cpOpen('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="confirm('刪除這則摘錄？')&&del('${x.id}')" aria-label="刪除">✕</button></span></div>${x.thought ? `<p style="margin:8px 0 0">${esc(x.thought)}</p>` : ''}
+  <div data-b="quotes">${qs.map(x => `<div class="card"><blockquote class="qt">${esc(x.text)}</blockquote><div class="mut" style="display:flex;justify-content:space-between"><span><span class="tag" title="寫下的日期">${esc(x.date || iso(new Date(x.created || (DB[x.id] || {}).updated_at || Date.now())))}</span> — ${esc(x.src) || '未註明出處'}${x.page ? `，p.${esc(x.page)}` : ''}</span><span style="flex:none;white-space:nowrap"><button class="x" onclick="cpOpen('${x.id}')" aria-label="編輯">✎</button><button class="x" onclick="confirm('刪除這則摘錄？')&&del('${x.id}')" aria-label="刪除">✕</button></span></div>${x.thought ? `<p style="margin:8px 0 0">${esc(x.thought)}</p>` : ''}
     <p style="margin:10px 0 6px"><span class="eyebrow">一句話重點</span><br><a class="wl" onclick="cpEdit('${x.id}','gist','用自己的話，一句話說出重點')">${esc(x.gist) || '還沒萃取，點這裡寫一句'}</a></p>
     <div class="row" style="align-items:center"><select style="flex:0 0 96px;margin:0" onchange="cpPara('${x.id}',this.value)" aria-label="PARA 歸屬">${PARA.map(([k, n]) => `<option value="${k}" ${(x.para || 'R') === k ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="b g" style="margin:0" onclick="cpToCard('${x.id}')">轉成知識小卡</button><button class="b g" style="margin:0" onclick="cpToMandala('${x.id}')">放進九宮格</button></div>${x.mand && mcells()[x.mand.k] ? `<p class="mut" style="margin:8px 0 0">已放進九宮格「${esc(mcells()['4_' + x.mand.b] || '')}」：${esc(mcells()[x.mand.k])}</p>` : ''}</div>`).join('') || '<div class="card"><p class="empty">還沒有摘錄</p></div>'}</div>
   <p class="mut" style="margin:12px 2px">第二大腦的流程：擷取 → 整理（專案／領域／資源／封存）→ 萃取成一句話 → 轉成小卡，變成自己的東西。</p>`;
