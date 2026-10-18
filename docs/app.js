@@ -1,4 +1,4 @@
-const APP_VERSION = '1.27.3';
+const APP_VERSION = '1.28.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -335,7 +335,9 @@ const cmpCats = (A, B, n) => { const ks = [...new Set([...Object.keys(A), ...Obj
 const pKey = (y, mo) => y === 'all' ? 'all' : mo === 'Y' ? y : mo === 'ytd' ? y + '~' : y + '-' + mo;
 // 年份、月份兩個下拉：年份含「總計」，月份含「整年」「迄今」與 1–12 月
 const pSelect = (key, years, fn) => { const y = key === 'all' ? 'all' : key.slice(0, 4), mo = key === 'all' ? 'Y' : pSingle(key) ? key.slice(5) : key.endsWith('~') ? 'ytd' : 'Y'; return `<div class="row" style="margin:0"><select id="${fn}_y" onchange="${fn}()" aria-label="年份"><option value="all" ${y === 'all' ? 'selected' : ''}>總計</option>${years.map(v => `<option value="${v}" ${v === y ? 'selected' : ''}>${v} 年</option>`).join('')}</select><select id="${fn}_m" onchange="${fn}()" aria-label="月份" ${y === 'all' ? 'disabled' : ''}><option value="Y" ${mo === 'Y' ? 'selected' : ''}>整年</option><option value="ytd" ${mo === 'ytd' ? 'selected' : ''}>迄今</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => { const v = String(n).padStart(2, '0'); return `<option value="${v}" ${v === mo ? 'selected' : ''}>${n} 月</option>`; }).join('')}</select></div>`; };
-const txns = k => { const f = pIn(k); return all('txn').filter(x => (x.ledger || 'personal') === 'personal' && f(x.date)); };
+// 帳目來源：在平台記的帳匯入 Numbers 後會標上 exported（匯入日期），之後由 Numbers 同步回來的那筆代表它，所以統計時排除，避免重複
+const ledger = () => all('txn').filter(x => !x.exported);
+const txns = k => { const f = pIn(k); return ledger().filter(x => (x.ledger || 'personal') === 'personal' && f(x.date)); };
 const finSum = (m = month(today())) => { const t = txns(m); return { inc: t.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), out: t.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0), budget: setting('budget', PFIN.def) }; };
 window.finAdd = () => { const a = +val('ft_a'); if (!a) return; put('txn', { ledger: 'personal', date: val('ft_d') || today(), type: val('ft_t'), amount: a, cat: val('ft_c'), acct: val('ft_k'), note: val('ft_n') }); render(); };
 window.finType = () => { $('#ft_c').innerHTML = ($('#ft_t').value === 'out' ? PFIN.out : PFIN.inc).map(c => `<option>${c}</option>`).join(''); };
@@ -354,7 +356,7 @@ window.advAdjDel = i => { if (!confirm('刪除這筆調整？')) return; setSett
 window.advStart = () => { const d = prompt('代墊從哪一天開始算（yyyy-mm-dd；清空表示全部都算）', setting('advstart', '')); if (d === null) return; const v = d.trim(); if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return alert('日期格式請用 yyyy-mm-dd'); setSetting('advstart', v); render(); };
 window.advPick = () => { ui.am = pKey($('#advPick_y').value, $('#advPick_m').value); render(); };
 function advView() {
-  const start = setting('advstart', ''), A = all('txn').filter(x => (x.ledger || 'personal') === 'personal' && /代墊/.test(x.cat || '') && (!start || x.date >= start)), key = ui.am || today().slice(0, 4), f = pIn(key), T = A.filter(x => f(x.date)).sort((a, b) => b.date.localeCompare(a.date));
+  const start = setting('advstart', ''), A = ledger().filter(x => (x.ledger || 'personal') === 'personal' && /代墊/.test(x.cat || '') && (!start || x.date >= start)), key = ui.am || today().slice(0, 4), f = pIn(key), T = A.filter(x => f(x.date)).sort((a, b) => b.date.localeCompare(a.date));
   const sum = (L, ty) => L.filter(x => x.type === ty).reduce((a, x) => a + x.amount, 0), out = sum(T, 'out'), back = sum(T, 'in'), years = [...new Set(A.map(x => x.date.slice(0, 4)))].sort().reverse();
   const ADJ = setting('advadj', []).map((x, i) => ({ ...x, i })).filter(x => !start || x.date >= start), adj = ADJ.reduce((a, x) => a + x.amount, 0), lastDate = A.reduce((m, x) => x.date > m ? x.date : m, ''), sg = v => (v >= 0 ? '+' : '-') + money(Math.abs(v));
   const ms = key === 'all' ? years.slice().reverse() : [...new Set(T.map(x => month(x.date)))].sort(), grp = k => A.filter(x => x.date.startsWith(k));
@@ -397,13 +399,15 @@ function advView() {
 }
 const pfinSeg = () => seg('pfin', [['led', '收支'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
 // 記帳分頁：新增一筆帳，下方列出最近新增的幾筆方便確認
+// 整理已匯入：列出已匯入 Numbers 的那幾筆，使用者確認後才從平台刪掉（Numbers 裡的不受影響）
+window.finTidy = () => { const L = Object.values(DB).filter(r => r.type === 'txn' && !r.deleted && r.data.exported); if (!L.length) return; if (!confirm(`以下 ${L.length} 筆已匯入 Numbers，要從平台刪除嗎？Numbers 裡的不受影響。\n\n` + L.map(r => `${r.data.date.slice(5)} ${r.data.cat} ${money(r.data.amount)}${r.data.note ? ' ' + r.data.note : ''}`).join('\n'))) return; L.forEach(r => { DB[r.id] = { ...r, deleted: true, updated_at: Date.now() }; if (!dirty.includes(r.id)) dirty.push(r.id); }); persist(); sync(); render(); };
 function finAddView() {
-  const accts = [...new Set(all('txn').map(x => x.acct).filter(Boolean))], C = PFIN, recent = Object.values(DB).filter(r => r.type === 'txn' && !r.deleted && (r.data.ledger || 'personal') === 'personal' && !/^(numbers|xlsx)$/.test(r.data.src || '')).sort((a, b) => b.updated_at - a.updated_at).slice(0, 8).map(r => ({ id: r.id, ...r.data }));
-  const td = recent.filter(x => x.date === today() && x.type === 'out').reduce((a, x) => a + x.amount, 0);
+  const accts = [...new Set(all('txn').map(x => x.acct).filter(Boolean))], C = PFIN, recent = Object.values(DB).filter(r => r.type === 'txn' && !r.deleted && (r.data.ledger || 'personal') === 'personal' && !/^(numbers|xlsx)$/.test(r.data.src || '')).sort((a, b) => b.updated_at - a.updated_at).map(r => ({ id: r.id, ...r.data })), ex = recent.filter(x => x.exported), pend = recent.filter(x => !x.exported);
+  const td = pend.filter(x => x.date === today() && x.type === 'out').reduce((a, x) => a + x.amount, 0), row = x => `<div class="item" style="${x.exported ? 'opacity:.65' : ''}"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span>${x.exported ? ` <em class="tagx" style="background:var(--sage);color:var(--tx)">已匯入 Numbers ${esc(x.exported.slice(5))}</em>` : ''}</span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b>${x.exported ? '' : `<button class="x" onclick="confirm('刪除這筆帳？')&&del('${x.id}')">✕</button>`}</span></div>`;
   return `  <div class="card" data-b="add"><h2>新增帳目</h2><div class="row"><select id="ft_t" onchange="finType()"><option value="out">支出</option><option value="in">收入</option></select><input type="date" id="ft_d" value="${today()}"></div>
   <div class="row"><input id="ft_a" type="number" inputmode="decimal" placeholder="金額"><select id="ft_c">${C.out.map(c => `<option>${c}</option>`).join('')}</select></div>
   <div class="row"><input id="ft_k" list="ft_kl" placeholder="帳戶（選填）"><datalist id="ft_kl">${accts.map(a => `<option value="${esc(a)}">`).join('')}</datalist><input id="ft_n" placeholder="備註（選填）"></div><button class="b" onclick="finAdd()">記帳</button></div>
-  <div class="card" data-b="recent"><h2>最近記的</h2>${recent.map(x => `<div class="item"><span>${x.date.slice(5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">在這裡記的帳會列在這裡（從記帳檔匯入的不列出）</p>'}${td ? `<p class="mut" style="margin:10px 0 0">以上今天的支出合計 ${money(td)}</p>` : ''}</div>`;
+  <div class="card" data-b="recent"><h2>在平台記的帳</h2><p class="mut" style="margin:0 0 6px">還沒匯入 Numbers ${pend.length} 筆${ex.length ? `・已匯入 ${ex.length} 筆（已匯入的不再重複計入統計）` : ''}</p>${pend.map(row).join('')}${ex.length ? `${pend.length ? '<div style="height:8px"></div>' : ''}${ex.map(row).join('')}<button class="b g" style="margin-top:10px" onclick="finTidy()">整理已匯入（${ex.length} 筆）</button>` : ''}${recent.length ? '' : '<p class="empty">在這裡記的帳會列在這裡（從記帳檔匯入的不列出）</p>'}${td ? `<p class="mut" style="margin:10px 0 0">以上今天的支出合計 ${money(td)}</p>` : ''}</div>`;
 }
 function fin() {
   if (sub.pfin === 'inv') return pfinSeg() + invest();
@@ -412,7 +416,7 @@ function fin() {
   const m = ui.m || month(today()), isY = !pSingle(m), t = txns(m), { inc, out, budget: bud } = finSum(m), by = {}, B1 = setting('catbudget', {});
   // 整年檢視：預算乘上該年有記帳的月數
   const yms = [...new Set(t.map(x => month(x.date)))].sort(), nM = isY ? Math.max(1, yms.length) : 1, budget = bud * nM, B = {}; Object.keys(B1).forEach(c => B[c] = B1[c] * nM);
-  const years = [...new Set(all('txn').map(x => x.date.slice(0, 4)))].sort().reverse();
+  const years = [...new Set(ledger().map(x => x.date.slice(0, 4)))].sort().reverse();
   t.filter(x => x.type === 'out').forEach(x => by[x.cat] = (by[x.cat] || 0) + x.amount);
   const cats = [...new Set([...Object.keys(by), ...Object.keys(B)])].map(c => [c, by[c] || 0]).sort((a, b) => b[1] - a[1]);
   const byIn = {}; t.filter(x => x.type === 'in').forEach(x => byIn[x.cat] = (byIn[x.cat] || 0) + x.amount);
@@ -488,7 +492,7 @@ function tradeCard() {
   ${setting('tradenote', '') ? `<p class="mut" style="margin:10px 0 0">${esc(setting('tradenote', ''))}</p>` : ''}</div>`;
 }
 function invest() {
-  const T = all('txn').filter(x => x.type === 'out' && x.cat === '投資').sort((a, b) => b.date.localeCompare(a.date)), H = all('holding').sort((a, b) => b.value - a.value);
+  const T = ledger().filter(x => x.type === 'out' && x.cat === '投資').sort((a, b) => b.date.localeCompare(a.date)), H = all('holding').sort((a, b) => b.value - a.value);
   const put_ = T.reduce((a, x) => a + x.amount, 0), cost = H.reduce((a, x) => a + x.cost, 0), value = H.reduce((a, x) => a + x.value, 0);
   const ms = []; for (let k = month(today()), i = 0; i < 12; i++, k = prevMonth(k)) ms.unshift(k);
   const per = ms.map(k => T.filter(x => month(x.date) === k).reduce((a, x) => a + x.amount, 0)), mx = Math.max(1, ...per), n = per.filter(Boolean).length;
@@ -515,7 +519,7 @@ const FAM_NAME = { '貓費用': '貓咪費用', '家庭開支-貓咪費用': '�
 const famName = c => FAM_NAME[c] || c;
 const famFull = () => famAll().map(f => {
   const gv = (f.give || []).slice(), direct = [];
-  all('txn').filter(x => x.type === 'out' && /^(家庭開支|H-)/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
+  ledger().filter(x => x.type === 'out' && /^(家庭開支|H-)/.test(x.cat || '') && month(x.date) === f.month).forEach(x => {
     const j = gv.findIndex(g => Math.abs(new Date(g[0]) - new Date(x.date)) <= 4 * 864e5 && Math.abs(g[2] - x.amount) <= g[2] * 0.25);
     if (j >= 0) gv.splice(j, 1); else direct.push(x);
   });
