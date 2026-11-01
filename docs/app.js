@@ -1,4 +1,4 @@
-const APP_VERSION = '1.32.4';
+const APP_VERSION = '1.32.5';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -734,7 +734,7 @@ const goalCard = g => `<div class="card"><div class="item" style="border:0;paddi
 function goalList() {
   const Y = gYear(), ny = new Date().getFullYear(), allG = all('goal'), gs = allG.filter(g => goalYearOf(g) === Y).map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
   // 每個期程都有自己的書寫處：人生目標多一塊自由書寫的「人生願景」，各期程下方都能直接寫一個目標
-  const VIS = { y1: ['vision_y1', '這一年的願景', '這一年想完成什麼、想變成什麼樣子、想放下什麼……寫多長都可以'] };
+  const VIS = { };
   // 願景：寫好後顯示成跟目標一樣的卡片，按 ✎ 才回到編輯；還沒寫時直接顯示書寫框
   const vision = k => { const v = VIS[k]; if (!v) return ''; const txt = visGet(v[0], Y), ed = ui.visEd === v[0] || !txt;
     return ed ? `<div class="card"><textarea id="vis_${k}" rows="5" style="margin:0" placeholder="${v[1]}：${v[2]}">${esc(txt)}</textarea><div class="row" style="margin-top:8px"><button class="b" onclick="visSave('${v[0]}',$('#vis_${k}').value);ui.visEd=null;render()">儲存</button>${txt ? `<button class="b g" onclick="ui.visEd=null;render()">取消</button>` : ''}</div></div>`
