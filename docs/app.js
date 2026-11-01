@@ -1,4 +1,4 @@
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.33.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -750,11 +750,11 @@ function goalList() {
   const vision = k => { const v = VIS[k]; if (!v) return ''; const txt = visGet(v[0], Y), ed = ui.visEd === v[0] || !txt;
     return ed ? `<div class="card"><textarea id="vis_${k}" rows="5" style="margin:0" placeholder="${v[1]}：${v[2]}">${esc(txt)}</textarea><div class="row" style="margin-top:8px"><button class="b" onclick="visSave('${v[0]}',$('#vis_${k}').value);ui.visEd=null;render()">儲存</button>${txt ? `<button class="b g" onclick="ui.visEd=null;render()">取消</button>` : ''}</div></div>`
       : `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><b class="serif" style="font-size:16px;white-space:pre-wrap;cursor:pointer" onclick="ui.visEd='${v[0]}';render()">${esc(txt)}</b></span><span style="flex:none"><button class="x" onclick="ui.visEd='${v[0]}';render()" aria-label="編輯" title="修改">✎</button></span></div></div>`; };
-  const quick = (k, n) => `<div class="card" style="padding:10px 14px"><div class="row" style="margin:0;align-items:center"><input id="qa_${k}" style="margin:0" placeholder="寫一個${n}…" onkeydown="if(event.key==='Enter')goalQuick('${k}')"><button class="b" style="flex:0 0 72px;margin:0" onclick="goalQuick('${k}')">加入</button></div></div>`;
+  const quick = (k, n) => `<div class="gq"><input id="qa_${k}" placeholder="寫一個${n}…" onkeydown="if(event.key==='Enter')goalQuick('${k}')"><button class="b" onclick="goalQuick('${k}')">加入</button></div>`;
   const years = [...new Set([...allG.map(goalYearOf), ny, ny + 1, Y])].sort((a, b) => b - a), empty = !gs.length && !['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, Y)), prevY = years.filter(y => y < Y && (allG.some(g => goalYearOf(g) === y) || ['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, y))))[0];
   const head = `<div class="seg">${years.map(y => `<button class="${y === Y ? 'on' : ''}" onclick="goalSetYear(${y})">${y}</button>`).join('')}</div>${empty && prevY ? `<div class="card"><p style="margin:0 0 8px">${Y} 年還沒寫。可以從頭寫，或拿 ${prevY} 年的當底稿再修改（${prevY} 年的會保留）。</p><button class="b g" onclick="goalCopyFrom(${prevY})">以 ${prevY} 年為底稿開始</button></div>` : ''}${Y < ny ? `<p class="mut" style="margin:0 2px 12px">這是 ${Y} 年寫下的版本，留作紀錄；仍可修改。</p>` : ''}`;
   const ord = (a, b) => (a.ord ?? 1e6) - (b.ord ?? 1e6);
-  return head + HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k).sort(ord), nm = k === 'year' ? `${Y} 年目標` : n; return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${nm}</h2></div>${quick(k, nm)}${vision(k)}<div class="ggrid" data-hz="${k}">${l.map(g => `<div class="gcard sz-${g.size || 'm'}" data-gid="${g.id}"><div class="grip grip-g" title="按住上緣拖曳，可移到別的期程"></div>${goalCard(g)}</div>`).join('')}</div></div>`; }).join('');
+  return head + HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k).sort(ord), nm = k === 'year' ? `${Y} 年目標` : n; return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><div class="gth"><h2 style="font-size:19px">${nm}</h2>${quick(k, nm)}</div></div>${vision(k)}<div class="ggrid" data-hz="${k}">${l.map(g => `<div class="gcard sz-${g.size || 'm'}" data-gid="${g.id}"><div class="grip grip-g" title="按住上緣拖曳，可移到別的期程"></div>${goalCard(g)}</div>`).join('')}</div></div>`; }).join('');
 }
 // 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
 // 每年一張九宮格：ui.my 是目前檢視的年份（預設今年）
