@@ -1,4 +1,4 @@
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.30.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -686,8 +686,18 @@ function diet() {
 // ---------- 未來目標（人生／5・3・1 年／今年 ＋ 曼陀羅九宮格） ----------
 const AREAS = ['職涯', '健康', '財務', '學習', '關係', '創作', '生活'];
 const HZ = [['life', '人生目標', 'Life'], ['y5', '5 年目標', 'Five years'], ['y3', '3 年目標', 'Three years'], ['y1', '1 年目標', 'One year'], ['year', '今年目標', 'This year']];
-window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { title: t, hz: val('gh'), area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
-window.goalQuick = k => { const t = val('qa_' + k); if (!t) return; put('goal', { title: t, hz: k, area: '生活', due: '', why: '', next: '', progress: 0, done: false, created: today() }); render(); };
+// 目標的年度版本：goal.year 為寫下的年度（舊資料沒有就用建立日期的年份）；願景文字存成 key_年度
+const gYear = () => ui.gy || new Date().getFullYear();
+const goalYearOf = g => +(g.year || (g.created || '').slice(0, 4) || 2026);
+const visKey = (k, y) => k + '_' + y;
+// 舊版沒有年度的願景（2026 寫的）視為 2026 年
+const visGet = (k, y) => setting(visKey(k, y), y === 2026 ? setting(k, '') : '');
+window.goalSetYear = y => { ui.gy = +y; render(); };
+window.visSave = (k, v) => { setSetting(visKey(k, gYear()), v); render(); };
+// 以前一年為底稿開新的一年：複製願景文字與未完成的目標（舊年度原封不動保留）
+window.goalCopyFrom = from => { const to = gYear(); const G = all('goal').filter(g => goalYearOf(g) === from && !g.done); if (!confirm(`把 ${from} 年的願景文字和 ${G.length} 個未完成的目標複製到 ${to} 年當底稿？${from} 年的內容會保留不變。`)) return; ['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].forEach(k => { const v = visGet(k, from); if (v && !visGet(k, to)) setSetting(visKey(k, to), v); }); G.forEach(g => { const { id, ...d } = g; put('goal', { ...d, year: to, created: today(), copiedFrom: id }); }); render(); };
+window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { year: gYear(), title: t, hz: val('gh'), area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
+window.goalQuick = k => { const t = val('qa_' + k); if (!t) return; put('goal', { year: gYear(), title: t, hz: k, area: '生活', due: '', why: '', next: '', progress: 0, done: false, created: today() }); render(); };
 window.goalEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: k === 'progress' ? Math.max(0, Math.min(100, +v || 0)) : v.trim() }); render(); };
 window.goalDone = id => { const g = DB[id].data; patch(id, { done: !g.done, progress: g.done ? g.progress : 100 }); render(); };
 const dLeft = due => { if (!due) return ''; const n = Math.round((new Date(due + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); return n >= 0 ? `還有 ${n} 天` : `已過 ${-n} 天`; };
@@ -697,13 +707,15 @@ const goalCard = g => `<div class="card"><div class="item" style="border:0;paddi
     <p style="margin:8px 0 6px"><span class="eyebrow">下一步</span><br><a class="wl" onclick="goalEdit('${g.id}','next','下一步行動')">${esc(g.next) || '設定下一步'}</a></p>
     <div class="bar"><i style="width:${g.progress || 0}%"></i></div><div class="mut" style="margin-top:4px"><a class="wl" onclick="goalEdit('${g.id}','progress','進度（0–100）')">進度 ${g.progress || 0}%</a></div></div>`;
 function goalList() {
-  const gs = all('goal').map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
+  const Y = gYear(), ny = new Date().getFullYear(), allG = all('goal'), gs = allG.filter(g => goalYearOf(g) === Y).map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
   // 每個期程都有自己的書寫處：人生目標多一塊自由書寫的「人生願景」，各期程下方都能直接寫一個目標
   const VIS = { life: ['lifevision', '人生願景', '想成為什麼樣的人、過什麼樣的生活、什麼對你最重要……寫多長都可以'], y5: ['vision_y5', '五年後的藍圖', '五年後的生活、工作、關係、身體是什麼樣子……寫多長都可以'], y3: ['vision_y3', '三年後的藍圖', '三年後想站在哪裡、要先打好哪些基礎……寫多長都可以'], y1: ['vision_y1', '這一年的願景', '這一年想完成什麼、想變成什麼樣子、想放下什麼……寫多長都可以'] };
-  const vision = k => { const v = VIS[k]; return !v ? '' : `<div class="card"><div class="eyebrow">${v[1]}・自由書寫</div><textarea rows="5" style="margin-top:6px" placeholder="${v[2]}" onchange="setSetting('${v[0]}',this.value);render()">${esc(setting(v[0], ''))}</textarea><p class="mut" style="margin:4px 0 0">離開這個欄位就會自動儲存並同步。</p></div>`; };
+  const vision = k => { const v = VIS[k]; return !v ? '' : `<div class="card"><div class="eyebrow">${v[1]}・自由書寫・${Y} 年寫的</div><textarea rows="5" style="margin-top:6px" placeholder="${v[2]}" onchange="visSave('${v[0]}',this.value)">${esc(visGet(v[0], Y))}</textarea><p class="mut" style="margin:4px 0 0">離開這個欄位就會自動儲存並同步。</p></div>`; };
   const quick = (k, n) => `<div class="card" style="padding:10px 14px"><div class="row" style="margin:0;align-items:center"><input id="qa_${k}" style="margin:0" placeholder="寫一個${n}…" onkeydown="if(event.key==='Enter')goalQuick('${k}')"><button class="b" style="flex:0 0 72px;margin:0" onclick="goalQuick('${k}')">加入</button></div></div>`;
-  return HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k); return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${n}</h2></div>${vision(k)}${l.map(goalCard).join('')}${quick(k, n)}</div>`; }).join('') +
-  `<div class="card"><h2>新增目標</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
+  const years = [...new Set([...allG.map(goalYearOf), ny, ny + 1, Y])].sort((a, b) => b - a), empty = !gs.length && !['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, Y)), prevY = years.filter(y => y < Y && (allG.some(g => goalYearOf(g) === y) || ['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, y))))[0];
+  const head = `<div class="seg">${years.map(y => `<button class="${y === Y ? 'on' : ''}" onclick="goalSetYear(${y})">${y} 年寫的${y === ny ? '・今年' : ''}</button>`).join('')}</div>${empty && prevY ? `<div class="card"><p style="margin:0 0 8px">${Y} 年還沒寫。可以從頭寫，或拿 ${prevY} 年的當底稿再修改（${prevY} 年的會保留）。</p><button class="b g" onclick="goalCopyFrom(${prevY})">以 ${prevY} 年為底稿開始</button></div>` : ''}${Y < ny ? `<p class="mut" style="margin:0 2px 12px">這是 ${Y} 年寫下的版本，留作紀錄；仍可修改。</p>` : ''}`;
+  return head + HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k), nm = k === 'year' ? `${Y} 年目標` : n; return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${nm}</h2></div>${vision(k)}${l.map(goalCard).join('')}${quick(k, nm)}</div>`; }).join('') +
+  `<div class="card"><h2>新增目標（${Y} 年）</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
 }
 // 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
 // 每年一張九宮格：ui.my 是目前檢視的年份（預設今年）
