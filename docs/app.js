@@ -1,4 +1,4 @@
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -709,11 +709,24 @@ window.goalOpen = id => {
   d.showModal();
 };
 window.goalSaveEdit = id => { const t = val('ge_t'); if (!t) return $('#ge_t').focus(); const p = +$('#ge_p').value; patch(id, { title: t, hz: val('ge_h'), area: val('ge_a'), due: val('ge_d'), year: +val('ge_y') || goalYearOf(DB[id].data), why: $('#ge_w').value.trim(), next: val('ge_n'), progress: p, done: p >= 100 }); $('#gDlg').close(); render(); };
+window.goalSize = id => { const n = { s: 'm', m: 'l', l: 's' }[DB[id].data.size || 'm']; patch(id, { size: n }); render(); };
+// 目標卡片拖曳：按住卡片上緣移動；放開後依畫面順序寫回 ord，移到別的期程就改 hz
+let gdrag = null;
+document.addEventListener('pointerdown', e => { const h = e.target.closest('.grip-g'); if (!h) return; e.preventDefault(); e.stopPropagation(); gdrag = h.closest('.gcard'); gdrag.classList.add('dragging'); h.setPointerCapture(e.pointerId); }, true);
+document.addEventListener('pointermove', e => {
+  if (!gdrag) return; e.preventDefault();
+  if (e.clientY < 90) scrollBy(0, -14); else if (e.clientY > innerHeight - 120) scrollBy(0, 14);
+  const hit = document.elementFromPoint(e.clientX, e.clientY); if (!hit) return; const t = hit.closest('.gcard'), grid = hit.closest('.ggrid');
+  if (t && t !== gdrag && t.parentNode.classList.contains('ggrid')) { const r = t.getBoundingClientRect(), after = e.clientY > r.bottom - r.height / 3 || (e.clientX > r.left + r.width / 2 && e.clientY > r.top + r.height / 3); t.parentNode.insertBefore(gdrag, after ? t.nextSibling : t); }
+  else if (grid && !t && grid !== gdrag.parentNode) grid.appendChild(gdrag);
+}, { passive: false });
+const gdragEnd = () => { if (!gdrag) return; gdrag.classList.remove('dragging'); gdrag = null; document.querySelectorAll('.ggrid').forEach(gr => { const hz = gr.dataset.hz; [...gr.querySelectorAll(':scope > .gcard')].forEach((c, i) => { const r = DB[c.dataset.gid]; if (r && (r.data.ord !== i || r.data.hz !== hz)) patch(c.dataset.gid, { ord: i, hz }); }); }); render(); };
+document.addEventListener('pointerup', gdragEnd); document.addEventListener('pointercancel', gdragEnd);
 window.goalQuick = k => { const t = val('qa_' + k); if (!t) return; put('goal', { year: gYear(), title: t, hz: k, area: '生活', due: '', why: '', next: '', progress: 0, done: false, created: today() }); render(); };
 window.goalEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: k === 'progress' ? Math.max(0, Math.min(100, +v || 0)) : v.trim() }); render(); };
 window.goalDone = id => { const g = DB[id].data; patch(id, { done: !g.done, progress: g.done ? g.progress : 100 }); render(); };
 const dLeft = due => { if (!due) return ''; const n = Math.round((new Date(due + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); return n >= 0 ? `還有 ${n} 天` : `已過 ${-n} 天`; };
-const goalCard = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;cursor:pointer;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}" onclick="goalOpen('${g.id}')">${esc(g.title)}</b></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="goalOpen('${g.id}')" aria-label="編輯" title="修改目標">✎</button><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></span></div>
+const goalCard = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;cursor:pointer;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}" onclick="goalOpen('${g.id}')">${esc(g.title)}</b></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="goalSize('${g.id}')" aria-label="切換大小" title="切換大小：小／中／大">${{ s: '▫', m: '◻', l: '⬜' }[g.size || 'm']}</button><button class="x" onclick="goalOpen('${g.id}')" aria-label="編輯" title="修改目標">✎</button><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></span></div>
     <div><span class="tag">${esc(g.area)}</span>${g.due ? `<span class="mut">${g.due} · ${dLeft(g.due)}</span>` : ''}</div>
     ${g.why ? `<p style="margin:8px 0 4px"><span class="eyebrow">為什麼</span><br>${esc(g.why)}</p>` : ''}
     <p style="margin:8px 0 6px"><span class="eyebrow">下一步</span><br><a class="wl" onclick="goalEdit('${g.id}','next','下一步行動')">${esc(g.next) || '設定下一步'}</a></p>
@@ -722,11 +735,15 @@ function goalList() {
   const Y = gYear(), ny = new Date().getFullYear(), allG = all('goal'), gs = allG.filter(g => goalYearOf(g) === Y).map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
   // 每個期程都有自己的書寫處：人生目標多一塊自由書寫的「人生願景」，各期程下方都能直接寫一個目標
   const VIS = { life: ['lifevision', '人生願景', '想成為什麼樣的人、過什麼樣的生活、什麼對你最重要……寫多長都可以'], y5: ['vision_y5', '五年後的藍圖', '五年後的生活、工作、關係、身體是什麼樣子……寫多長都可以'], y3: ['vision_y3', '三年後的藍圖', '三年後想站在哪裡、要先打好哪些基礎……寫多長都可以'], y1: ['vision_y1', '這一年的願景', '這一年想完成什麼、想變成什麼樣子、想放下什麼……寫多長都可以'] };
-  const vision = k => { const v = VIS[k]; return !v ? '' : `<div class="card"><div class="eyebrow">${v[1]}・自由書寫・${Y} 年寫的</div><textarea rows="5" style="margin-top:6px" placeholder="${v[2]}" onchange="visSave('${v[0]}',this.value)">${esc(visGet(v[0], Y))}</textarea><p class="mut" style="margin:4px 0 0">離開這個欄位就會自動儲存並同步。</p></div>`; };
+  // 願景：寫好後顯示成跟目標一樣的卡片，按 ✎ 才回到編輯；還沒寫時直接顯示書寫框
+  const vision = k => { const v = VIS[k]; if (!v) return ''; const txt = visGet(v[0], Y), ed = ui.visEd === v[0] || !txt;
+    return ed ? `<div class="card"><div class="eyebrow">${v[1]}・${Y} 年寫的</div><textarea id="vis_${k}" rows="5" style="margin-top:6px" placeholder="${v[2]}">${esc(txt)}</textarea><div class="row" style="margin-top:8px"><button class="b" onclick="visSave('${v[0]}',$('#vis_${k}').value);ui.visEd=null;render()">儲存</button>${txt ? `<button class="b g" onclick="ui.visEd=null;render()">取消</button>` : ''}</div></div>`
+      : `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><b class="serif" style="font-size:16px;white-space:pre-wrap;cursor:pointer" onclick="ui.visEd='${v[0]}';render()">${esc(txt)}</b></span><span style="flex:none"><button class="x" onclick="ui.visEd='${v[0]}';render()" aria-label="編輯" title="修改">✎</button></span></div><div><span class="tag">${v[1]}</span><span class="mut">${Y} 年寫的</span></div></div>`; };
   const quick = (k, n) => `<div class="card" style="padding:10px 14px"><div class="row" style="margin:0;align-items:center"><input id="qa_${k}" style="margin:0" placeholder="寫一個${n}…" onkeydown="if(event.key==='Enter')goalQuick('${k}')"><button class="b" style="flex:0 0 72px;margin:0" onclick="goalQuick('${k}')">加入</button></div></div>`;
   const years = [...new Set([...allG.map(goalYearOf), ny, ny + 1, Y])].sort((a, b) => b - a), empty = !gs.length && !['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, Y)), prevY = years.filter(y => y < Y && (allG.some(g => goalYearOf(g) === y) || ['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].some(k => visGet(k, y))))[0];
   const head = `<div class="seg">${years.map(y => `<button class="${y === Y ? 'on' : ''}" onclick="goalSetYear(${y})">${y} 年寫的${y === ny ? '・今年' : ''}</button>`).join('')}</div>${empty && prevY ? `<div class="card"><p style="margin:0 0 8px">${Y} 年還沒寫。可以從頭寫，或拿 ${prevY} 年的當底稿再修改（${prevY} 年的會保留）。</p><button class="b g" onclick="goalCopyFrom(${prevY})">以 ${prevY} 年為底稿開始</button></div>` : ''}${Y < ny ? `<p class="mut" style="margin:0 2px 12px">這是 ${Y} 年寫下的版本，留作紀錄；仍可修改。</p>` : ''}`;
-  return head + HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k), nm = k === 'year' ? `${Y} 年目標` : n; return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${nm}</h2></div>${vision(k)}${l.map(goalCard).join('')}${quick(k, nm)}</div>`; }).join('') +
+  const ord = (a, b) => (a.ord ?? 1e6) - (b.ord ?? 1e6);
+  return head + HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k).sort(ord), nm = k === 'year' ? `${Y} 年目標` : n; return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${nm}</h2></div>${vision(k)}<div class="ggrid" data-hz="${k}">${l.map(g => `<div class="gcard sz-${g.size || 'm'}" data-gid="${g.id}"><div class="grip grip-g" title="按住上緣拖曳，可移到別的期程"></div>${goalCard(g)}</div>`).join('')}</div>${quick(k, nm)}</div>`; }).join('') +
   `<div class="card"><h2>新增目標（${Y} 年）</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
 }
 // 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
