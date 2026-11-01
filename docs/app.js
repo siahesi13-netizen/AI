@@ -1,4 +1,4 @@
-const APP_VERSION = '1.32.6';
+const APP_VERSION = '1.33.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -65,7 +65,7 @@ document.body.insertAdjacentHTML('beforeend', `<dialog id="cfgDlg"><form id="cfg
   <div class="row"><button class="b" id="cfgSave" type="submit">儲存</button><button class="b g" id="cfgClose" type="button">關閉</button></div>
   <div class="eyebrow" style="margin-top:14px">設定碼</div><p class="mut" style="margin:2px 0 6px">把網址和金鑰合成一串。在已設定好的裝置按「複製」，到新裝置按「貼上」。設定碼等同金鑰，請勿外流。</p>
   <div class="row"><button class="b g" id="cfgPaste" type="button">貼上設定碼</button><button class="b g" id="cfgCopy" type="button">複製設定碼</button></div><p class="mut" id="cfgMsg" style="margin:8px 0 0;min-height:1.4em"></p>
-  <div class="eyebrow" style="margin-top:10px">版面</div><p class="mut" style="margin:2px 0 6px">每個區塊都可以拖曳：按住區塊最上緣再移動。</p><button class="b g" id="cfgLayout" type="button">把目前這一頁恢復成預設排列</button></form></dialog>`);
+  <div class="eyebrow" style="margin-top:10px">版面</div><p class="mut" style="margin:2px 0 6px">每個區塊都可以拖曳：按住區塊最上緣再移動；按住右下角左右拖曳可調整寬度。</p><button class="b g" id="cfgLayout" type="button">把目前這一頁恢復成預設排列</button></form></dialog>`);
 const cfgMsg = t => { $('#cfgMsg').textContent = t; };
 const openCfg = msg => { $('#cfgUrl').value = cfg().url || ''; $('#cfgTok').value = cfg().token || ''; cfgMsg(msg || ''); $('#cfgDlg').showModal(); };
 // 點圓點：這台裝置還沒設定時，先看剪貼簿有沒有設定碼（例如剛在 iPhone 複製，透過通用剪貼簿帶到 iPad），有就直接套用
@@ -117,7 +117,10 @@ function render() {
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
 const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : tab === 'ffin' ? ':' + sub.ffin : tab === 'pfin' ? ':' + sub.pfin : '');
 // 每個區塊的上緣有一條看不見的拖曳區：按住區塊最上緣即可拖曳重排（沒有圖示，也沒有編輯模式）
-const GRIP = '<div class="grip grip-h" title="按住區塊上緣可拖曳移動"></div>';
+const GRIP = '<div class="grip grip-h" title="按住區塊上緣可拖曳移動"></div><div class="rsz" title="按住右下角左右拖曳可調整寬度；點兩下恢復預設"></div>';
+// 區塊寬度：版面切成 6 欄，每個區塊占 2／3／4／6 欄（依頁面記住並同步）
+const SPANS = [2, 3, 4, 6];
+const bSpan = (b, sz) => { const n = sz[b.dataset.b] || (b.classList.contains('full') || !$('#view').classList.contains('two') ? 6 : 3); b.style.setProperty('--sp', n); b.dataset.sp = n; };
 function applyLayout() {
   const v = $('#view'), seen = {}, blocks = []; v.classList.toggle('two', tab === 'home');
   [...v.children].forEach((el, i) => {
@@ -129,10 +132,18 @@ function applyLayout() {
   });
   const order = setting('layout_' + pageKey(), []);
   // 已存的順序裡沒有的新區塊，排在它原本前一個區塊的後面（而不是全部丟到最後）
+  const sz = setting('bsize_' + pageKey(), {}); blocks.forEach(b => bSpan(b, sz));
   if (order.length) { let last = -1; blocks.map((b, i) => { const k = order.indexOf(b.dataset.b), r = k < 0 ? last + 0.5 : k; last = r; return [r, i, b]; }).sort((a, b) => a[0] - b[0] || a[1] - b[1]).forEach(([, , b]) => v.appendChild(b)); }
 }
 const saveLayout = () => setSetting('layout_' + pageKey(), [...document.querySelectorAll('#view > .blk')].map(b => b.dataset.b));
-window.layoutReset = () => { setSetting('layout_' + pageKey(), []); render(); };
+window.layoutReset = () => { setSetting('layout_' + pageKey(), []); setSetting('bsize_' + pageKey(), {}); render(); };
+// 調整寬度：按住區塊右下角左右拖曳，放開時對齊到最接近的欄寬
+let resizing = null;
+document.addEventListener('pointerdown', e => { const h = e.target.closest('.rsz'); if (!h) return; e.preventDefault(); const b = h.closest('.blk'), v = $('#view'); resizing = { b, x0: b.getBoundingClientRect().left, col: v.clientWidth / 6 }; b.classList.add('resizing'); h.setPointerCapture(e.pointerId); });
+document.addEventListener('pointermove', e => { if (!resizing) return; e.preventDefault(); const w = e.clientX - resizing.x0, want = w / resizing.col; const n = SPANS.reduce((a, c) => Math.abs(c - want) < Math.abs(a - want) ? c : a); if (+resizing.b.dataset.sp !== n) { resizing.b.style.setProperty('--sp', n); resizing.b.dataset.sp = n; } }, { passive: false });
+const rszEnd = () => { if (!resizing) return; const b = resizing.b; b.classList.remove('resizing'); resizing = null; const sz = { ...setting('bsize_' + pageKey(), {}) }; sz[b.dataset.b] = +b.dataset.sp; setSetting('bsize_' + pageKey(), sz); };
+document.addEventListener('pointerup', rszEnd); document.addEventListener('pointercancel', rszEnd);
+document.addEventListener('dblclick', e => { const h = e.target.closest('.rsz'); if (!h) return; const sz = { ...setting('bsize_' + pageKey(), {}) }; delete sz[h.closest('.blk').dataset.b]; setSetting('bsize_' + pageKey(), sz); render(); });
 let dragging = null;
 document.addEventListener('pointerdown', e => { const h = e.target.closest('.grip-h'); if (!h) return; e.preventDefault(); dragging = h.closest('.blk'); dragging.classList.add('dragging'); h.setPointerCapture(e.pointerId); });
 document.addEventListener('pointermove', e => {
@@ -759,7 +770,7 @@ const mBlock = (b, mini) => `<div class="mand ${mini ? 'mini' : ''}">${[0, 1, 2,
 function mandala() {
   const c = mcells(), b = ui.mb, filled = Object.keys(c).filter(k => !k.startsWith('4_') && c[k]).length, ny = new Date().getFullYear();
   const ys = [...new Set([...all('mandala').map(x => +x.year).filter(Boolean), ny, ny + 1, mYear()])].sort((a, b) => b - a);
-  return `<div class="seg">${ys.map(y => `<button class="${y === mYear() ? 'on' : ''}" onclick="mSetYear(${y})">${y}${y === ny ? '・今年' : ''}</button>`).join('')}</div><div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${mYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
+  return `<div class="seg">${ys.map(y => `<button class="${y === mYear() ? 'on' : ''}" onclick="mSetYear(${y})">${y}</button>`).join('')}</div><div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${mYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
     ${mBlock(b, false)}<div class="mut" style="margin-top:10px">已填行動 ${filled} / 64</div><div class="bar" style="margin-top:6px"><i style="width:${filled / 64 * 100}%"></i></div></div>
   <div class="card m9"><h2>全貌</h2><div class="mand9">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(x => mBlock(x, true)).join('')}</div></div>`;
 }
