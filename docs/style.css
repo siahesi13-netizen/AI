@@ -94,8 +94,17 @@ nav button.on{color:var(--tx);font-weight:700}nav button.on .ic{color:var(--coco
 
 /* 可拖曳的版面區塊 */
 .blk{position:relative;min-width:0}
-#view.two{display:grid;grid-template-columns:1fr;column-gap:16px;align-items:start}
-@media(min-width:1000px){#view.two{grid-template-columns:1fr 1fr}#view.two>.full{grid-column:1/-1}}
+#view{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));column-gap:16px;align-items:start}
+#view>*{grid-column:1/-1}
+#view>.blk{grid-column:span var(--sp,6)}
+/* 手機：窄的區塊（2 欄）兩個並排，其餘整列 */
+@media(max-width:700px){#view>.blk{grid-column:1/-1}#view>.blk[data-sp="2"]{grid-column:span 3}}
+/* 首頁在中等寬度維持單欄 */
+@media(min-width:701px) and (max-width:999px){#view.two>.blk{grid-column:1/-1}}
+.rsz{position:absolute;right:0;bottom:6px;width:18px;height:18px;z-index:3;cursor:ew-resize;touch-action:none;user-select:none;-webkit-user-select:none;border-right:2px solid transparent;border-bottom:2px solid transparent;border-radius:0 0 12px 0}
+.blk:hover>.rsz,.blk.resizing>.rsz{border-color:var(--line)}
+.blk.resizing{outline:1px dashed var(--line);outline-offset:2px;border-radius:14px}
+@media(max-width:700px){.rsz{width:24px;height:24px}}
 .blk.dragging{opacity:.5}
 /* 拖曳區：每個區塊上緣一條看不見的橫條（沒有圖示）；滑鼠移上去游標會變成抓取 */
 .grip{position:absolute;top:-5px;left:0;right:0;height:11px;z-index:3;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
