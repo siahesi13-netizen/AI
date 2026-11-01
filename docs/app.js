@@ -1,4 +1,4 @@
-const APP_VERSION = '1.30.1';
+const APP_VERSION = '1.30.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
