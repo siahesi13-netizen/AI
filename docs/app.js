@@ -1,4 +1,4 @@
-const APP_VERSION = '1.30.2';
+const APP_VERSION = '1.31.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -697,11 +697,23 @@ window.visSave = (k, v) => { setSetting(visKey(k, gYear()), v); render(); };
 // 以前一年為底稿開新的一年：複製願景文字與未完成的目標（舊年度原封不動保留）
 window.goalCopyFrom = from => { const to = gYear(); const G = all('goal').filter(g => goalYearOf(g) === from && !g.done); if (!confirm(`把 ${from} 年的願景文字和 ${G.length} 個未完成的目標複製到 ${to} 年當底稿？${from} 年的內容會保留不變。`)) return; ['lifevision', 'vision_y5', 'vision_y3', 'vision_y1'].forEach(k => { const v = visGet(k, from); if (v && !visGet(k, to)) setSetting(visKey(k, to), v); }); G.forEach(g => { const { id, ...d } = g; put('goal', { ...d, year: to, created: today(), copiedFrom: id }); }); render(); };
 window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { year: gYear(), title: t, hz: val('gh'), area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
+// 修改目標：一個視窗內改所有欄位（目標、期程、領域、期限、為什麼、下一步、進度、年度）
+window.goalOpen = id => {
+  const g = DB[id].data; let d = $('#gDlg'); if (!d) { d = document.createElement('dialog'); d.id = 'gDlg'; document.body.appendChild(d); }
+  d.innerHTML = `<h2 style="margin-top:0">修改目標</h2><input id="ge_t" value="${esc(g.title)}" placeholder="目標">
+  <div class="row"><select id="ge_h">${HZ.map(([k, n]) => `<option value="${k}" ${(g.hz || 'year') === k ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ge_a">${[...new Set([...AREAS, g.area].filter(Boolean))].map(a => `<option ${a === g.area ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></div>
+  <div class="row"><input type="date" id="ge_d" value="${esc(g.due || '')}" aria-label="期限"><input id="ge_y" type="number" value="${goalYearOf(g)}" aria-label="寫下的年度" title="寫下的年度"></div>
+  <textarea id="ge_w" rows="3" placeholder="為什麼重要">${esc(g.why || '')}</textarea><input id="ge_n" value="${esc(g.next || '')}" placeholder="下一步行動">
+  <label class="mut" style="display:block;margin:6px 0 2px">進度 <b id="ge_pv">${g.progress || 0}%</b></label><input id="ge_p" type="range" min="0" max="100" step="5" value="${g.progress || 0}" oninput="$('#ge_pv').textContent=this.value+'%'" style="width:100%">
+  <div class="row" style="margin-top:10px"><button class="b" onclick="goalSaveEdit('${id}')">儲存</button><button class="b g" onclick="$('#gDlg').close()">取消</button></div>`;
+  d.showModal();
+};
+window.goalSaveEdit = id => { const t = val('ge_t'); if (!t) return $('#ge_t').focus(); const p = +$('#ge_p').value; patch(id, { title: t, hz: val('ge_h'), area: val('ge_a'), due: val('ge_d'), year: +val('ge_y') || goalYearOf(DB[id].data), why: $('#ge_w').value.trim(), next: val('ge_n'), progress: p, done: p >= 100 }); $('#gDlg').close(); render(); };
 window.goalQuick = k => { const t = val('qa_' + k); if (!t) return; put('goal', { year: gYear(), title: t, hz: k, area: '生活', due: '', why: '', next: '', progress: 0, done: false, created: today() }); render(); };
 window.goalEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: k === 'progress' ? Math.max(0, Math.min(100, +v || 0)) : v.trim() }); render(); };
 window.goalDone = id => { const g = DB[id].data; patch(id, { done: !g.done, progress: g.done ? g.progress : 100 }); render(); };
 const dLeft = due => { if (!due) return ''; const n = Math.round((new Date(due + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); return n >= 0 ? `還有 ${n} 天` : `已過 ${-n} 天`; };
-const goalCard = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}">${esc(g.title)}</b></span><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></div>
+const goalCard = g => `<div class="card"><div class="item" style="border:0;padding:0 0 4px"><span><i class="dot ${g.done ? 'on' : ''}" onclick="goalDone('${g.id}')"></i><b class="serif" style="font-size:16px;cursor:pointer;${g.done ? 'text-decoration:line-through;color:var(--mut)' : ''}" onclick="goalOpen('${g.id}')">${esc(g.title)}</b></span><span style="flex:none;white-space:nowrap"><button class="x" onclick="goalOpen('${g.id}')" aria-label="編輯" title="修改目標">✎</button><button class="x" onclick="confirm('刪除這個目標？')&&del('${g.id}')">✕</button></span></div>
     <div><span class="tag">${esc(g.area)}</span>${g.due ? `<span class="mut">${g.due} · ${dLeft(g.due)}</span>` : ''}</div>
     ${g.why ? `<p style="margin:8px 0 4px"><span class="eyebrow">為什麼</span><br>${esc(g.why)}</p>` : ''}
     <p style="margin:8px 0 6px"><span class="eyebrow">下一步</span><br><a class="wl" onclick="goalEdit('${g.id}','next','下一步行動')">${esc(g.next) || '設定下一步'}</a></p>
