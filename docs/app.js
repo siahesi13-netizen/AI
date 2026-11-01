@@ -1,4 +1,4 @@
-const APP_VERSION = '1.33.1';
+const APP_VERSION = '1.33.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -770,7 +770,7 @@ const mBlock = (b, mini) => `<div class="mand ${mini ? 'mini' : ''}">${[0, 1, 2,
 function mandala() {
   const c = mcells(), b = ui.mb, filled = Object.keys(c).filter(k => !k.startsWith('4_') && c[k]).length, ny = new Date().getFullYear();
   const ys = [...new Set([...all('mandala').map(x => +x.year).filter(Boolean), ny, ny + 1, mYear()])].sort((a, b) => b - a);
-  return `<div class="seg">${ys.map(y => `<button class="${y === mYear() ? 'on' : ''}" onclick="mSetYear(${y})">${y}</button>`).join('')}</div><div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${mYear()} 曼陀羅` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
+  return `<div class="seg">${ys.map(y => `<button class="${y === mYear() ? 'on' : ''}" onclick="mSetYear(${y})">${y}</button>`).join('')}</div><div class="card"><div class="item" style="border:0;padding:0 0 10px"><span><b class="serif" style="font-size:16px">${b === 4 ? `${mYear()}` : esc(c[`4_${b}`] || '面向')}</b><div class="mut">${b === 4 ? '中心是核心目標，周圍是八個面向。點已填的面向可展開它的八個行動。' : '中心是這個面向，周圍寫八個具體行動。'}</div></span>${b === 4 ? '' : `<button class="b g" style="width:auto;flex:none" onclick="mOpen(4)">‹ 回中心</button>`}</div>
     ${mBlock(b, false)}<div class="mut" style="margin-top:10px">已填行動 ${filled} / 64</div><div class="bar" style="margin-top:6px"><i style="width:${filled / 64 * 100}%"></i></div></div>
   <div class="card m9"><h2>全貌</h2><div class="mand9">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map(x => mBlock(x, true)).join('')}</div></div>`;
 }
