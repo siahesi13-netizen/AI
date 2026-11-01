@@ -1,4 +1,4 @@
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.29.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -687,6 +687,7 @@ function diet() {
 const AREAS = ['職涯', '健康', '財務', '學習', '關係', '創作', '生活'];
 const HZ = [['life', '人生目標', 'Life'], ['y5', '5 年目標', 'Five years'], ['y3', '3 年目標', 'Three years'], ['y1', '1 年目標', 'One year'], ['year', '今年目標', 'This year']];
 window.goalAdd = () => { const t = val('gt'); if (!t) return; put('goal', { title: t, hz: val('gh'), area: val('ga'), due: val('gd'), why: val('gw'), next: val('gn'), progress: 0, done: false, created: today() }); render(); };
+window.goalQuick = k => { const t = val('qa_' + k); if (!t) return; put('goal', { title: t, hz: k, area: '生活', due: '', why: '', next: '', progress: 0, done: false, created: today() }); render(); };
 window.goalEdit = (id, k, label) => { const v = prompt(label, DB[id].data[k] ?? ''); if (v === null) return; patch(id, { [k]: k === 'progress' ? Math.max(0, Math.min(100, +v || 0)) : v.trim() }); render(); };
 window.goalDone = id => { const g = DB[id].data; patch(id, { done: !g.done, progress: g.done ? g.progress : 100 }); render(); };
 const dLeft = due => { if (!due) return ''; const n = Math.round((new Date(due + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); return n >= 0 ? `還有 ${n} 天` : `已過 ${-n} 天`; };
@@ -697,7 +698,11 @@ const goalCard = g => `<div class="card"><div class="item" style="border:0;paddi
     <div class="bar"><i style="width:${g.progress || 0}%"></i></div><div class="mut" style="margin-top:4px"><a class="wl" onclick="goalEdit('${g.id}','progress','進度（0–100）')">進度 ${g.progress || 0}%</a></div></div>`;
 function goalList() {
   const gs = all('goal').map(g => ({ ...g, hz: g.hz || 'year' })).sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
-  return HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k); return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${n}</h2></div>${l.map(goalCard).join('') || '<div class="card"><p class="empty">尚未設定</p></div>'}</div>`; }).join('') +
+  // 每個期程都有自己的書寫處：人生目標多一塊自由書寫的「人生願景」，各期程下方都能直接寫一個目標
+  const VIS = { life: ['lifevision', '人生願景', '想成為什麼樣的人、過什麼樣的生活、什麼對你最重要……寫多長都可以'], y5: ['vision_y5', '五年後的藍圖', '五年後的生活、工作、關係、身體是什麼樣子……寫多長都可以'], y3: ['vision_y3', '三年後的藍圖', '三年後想站在哪裡、要先打好哪些基礎……寫多長都可以'], y1: ['vision_y1', '這一年的願景', '這一年想完成什麼、想變成什麼樣子、想放下什麼……寫多長都可以'] };
+  const vision = k => { const v = VIS[k]; return !v ? '' : `<div class="card"><div class="eyebrow">${v[1]}・自由書寫</div><textarea rows="5" style="margin-top:6px" placeholder="${v[2]}" onchange="setSetting('${v[0]}',this.value);render()">${esc(setting(v[0], ''))}</textarea><p class="mut" style="margin:4px 0 0">離開這個欄位就會自動儲存並同步。</p></div>`; };
+  const quick = (k, n) => `<div class="card" style="padding:10px 14px"><div class="row" style="margin:0;align-items:center"><input id="qa_${k}" style="margin:0" placeholder="寫一個${n}…" onkeydown="if(event.key==='Enter')goalQuick('${k}')"><button class="b" style="flex:0 0 72px;margin:0" onclick="goalQuick('${k}')">加入</button></div></div>`;
+  return HZ.map(([k, n, en]) => { const l = gs.filter(g => g.hz === k); return `<div data-b="hz_${k}"><div class="ptitle" style="margin-top:8px"><div class="eyebrow">${en}</div><h2 style="font-size:19px">${n}</h2></div>${vision(k)}${l.map(goalCard).join('')}${quick(k, n)}</div>`; }).join('') +
   `<div class="card"><h2>新增目標</h2><input id="gt" placeholder="目標"><div class="row"><select id="gh">${HZ.map(([k, n]) => `<option value="${k}" ${k === 'year' ? 'selected' : ''}>${n}</option>`).join('')}</select><select id="ga">${AREAS.map(a => `<option>${a}</option>`).join('')}</select></div><input type="date" id="gd" aria-label="期限"><input id="gw" placeholder="為什麼重要（選填）"><input id="gn" placeholder="下一步行動（選填）"><button class="b" onclick="goalAdd()">建立</button></div>`;
 }
 // 曼陀羅：中心九宮格＝核心目標＋八個面向；每個面向再展開八個行動。格子鍵值 `${區塊}_${格}`，面向文字存在中心區塊（4_k）
