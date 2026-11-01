@@ -1,6 +1,9 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.33.2] - 2026-11-01
+- 曼陀羅：九宮格標題只顯示年份（拿掉「曼陀羅」）
+
 ## [1.33.1] - 2026-11-01
 - 未來目標：各期程標題和「寫一個目標」輸入列放在同一行
 
