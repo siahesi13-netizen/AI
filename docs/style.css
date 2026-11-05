@@ -133,3 +133,5 @@ dialog::backdrop{background:rgba(40,30,20,.35)}
 .ggrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:12px;min-height:8px}.gcard{position:relative;min-width:0}.gcard>.card{margin-bottom:0;height:100%}.gcard.sz-s{grid-column:span 2}.gcard.sz-m{grid-column:span 3}.gcard.sz-l{grid-column:span 6}.gcard.dragging{opacity:.55}.gcard.dragging .grip{cursor:grabbing}@media(max-width:700px){.gcard.sz-s{grid-column:span 3}.gcard.sz-m,.gcard.sz-l{grid-column:span 6}}
 /* 目標期程標題與「寫一個目標」輸入列同一行 */
 .gth{display:flex;align-items:center;gap:14px}.gth h2{flex:none;white-space:nowrap}.gq{flex:1;display:flex;gap:8px;min-width:0}.gq input{margin:0;flex:1;min-width:0}.gq .b{margin:0;flex:0 0 64px}
+/* 回顧頁數據格 */
+.rvg{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}.rvt{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px}.rvv{font-size:18px;font-weight:600;margin:2px 0}.rvv .up{color:#6f8f5f;font-size:12px}.rvv .down{color:#b0674f;font-size:12px}
