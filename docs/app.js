@@ -1,4 +1,4 @@
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.35.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -99,12 +99,13 @@ const ICON = {
   ffin: IC('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>'),
   pfin: IC('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/>'),
   know: IC('<path d="M12 6c-2-1.5-5-2-8-2v14c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2z"/><path d="M12 6v14"/>'),
-  goal: IC('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>')
+  goal: IC('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
+  rev: IC('<path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/><path d="M12 8v4l3 2"/>')
 };
 // [key, 側邊欄名稱, 英文副標, 手機底部短名]
 const TABS = [['home', '今日', 'Today', '今日'], ['bujo', '待辦事項', 'To-do', '待辦'], ['habit', '每週習慣建立', 'Weekly Habits', '習慣'], ['diet', '飲食管理', 'Nutrition', '飲食'], ['fit', '運動管理', 'Movement', '運動'],
-  ['ffin', '家庭財務', 'Family Finance', '家庭'], ['pfin', '個人財務', 'Personal Finance', '個人'], ['know', '閱讀', 'Reading', '閱讀'], ['goal', '未來目標', 'Future Goals', '目標']];
-let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list', tpage: 'todo', ffin: 'fam', pfin: 'led' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
+  ['ffin', '家庭財務', 'Family Finance', '家庭'], ['pfin', '個人財務', 'Personal Finance', '個人'], ['know', '閱讀', 'Reading', '閱讀'], ['goal', '未來目標', 'Future Goals', '目標'], ['rev', '回顧', 'Review', '回顧']];
+let tab = 'home', sub = { know: 'read', todo: 'all', goal: 'list', rev: 'week', tpage: 'todo', ffin: 'fam', pfin: 'led' }, ui = { date: today(), q: '', tag: '', note: null, dd: today(), wk: 0, mb: 4, cq: '' };
 $('#tabs').innerHTML = TABS.map(([k, n, , sn]) => `<button data-k="${k}">${ICON[k]}<span class="nl">${n}</span><span class="ns">${sn}</span></button>`).join('');
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.k; render(); scrollTo(0, 0); } };
 function render() {
@@ -115,7 +116,7 @@ function render() {
 }
 
 // ---------- 版面配置：每個區塊都可拖曳重排，順序依頁面記住並同步 ----------
-const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : tab === 'ffin' ? ':' + sub.ffin : tab === 'pfin' ? ':' + sub.pfin : '');
+const pageKey = () => tab + (tab === 'bujo' ? ':' + sub.tpage : tab === 'know' ? ':' + sub.know : tab === 'goal' ? ':' + sub.goal : tab === 'rev' ? ':' + sub.rev : tab === 'ffin' ? ':' + sub.ffin : tab === 'pfin' ? ':' + sub.pfin : '');
 // 每個區塊的上緣有一條看不見的拖曳區：按住區塊最上緣即可拖曳重排（沒有圖示，也沒有編輯模式）
 const GRIP = '<div class="grip grip-h" title="按住區塊上緣可拖曳移動"></div><div class="rsz" title="按住右下角左右拖曳可調整寬度；點兩下恢復預設"></div>';
 // 區塊寬度：版面切成 6 欄，每個區塊占 2／3／4／6 欄（依頁面記住並同步）
@@ -884,7 +885,8 @@ const COVER = {
   ffin: CV('<rect width="160" height="74" fill="var(--sand)"/><path d="M50 74V40l30-22 30 22V74Z" fill="var(--card)" opacity=".85"/><rect x="72" y="50" width="16" height="24" fill="var(--cocoa)" opacity=".7"/><circle cx="124" cy="24" r="9" fill="var(--clay)"/>'),
   pfin: CV('<rect width="160" height="74" fill="var(--clay)"/><rect x="42" y="46" width="15" height="28" rx="3" fill="var(--card)" opacity=".75"/><rect x="63" y="36" width="15" height="38" rx="3" fill="var(--card)" opacity=".75"/><rect x="84" y="26" width="15" height="48" rx="3" fill="var(--card)" opacity=".75"/><rect x="105" y="14" width="15" height="60" rx="3" fill="var(--cocoa)" opacity=".8"/>'),
   know: CV('<rect width="160" height="74" fill="var(--mist)"/><path d="M58 74V36a22 22 0 0 1 44 0V74Z" fill="var(--card)" opacity=".8"/><circle cx="80" cy="38" r="8" fill="var(--cocoa)" opacity=".75"/><rect x="18" y="40" width="9" height="34" fill="var(--sand)"/><rect x="29" y="30" width="9" height="44" fill="var(--card)" opacity=".7"/><rect x="122" y="34" width="9" height="40" fill="var(--sand)"/><rect x="133" y="44" width="9" height="30" fill="var(--card)" opacity=".7"/>'),
-  goal: CV('<rect width="160" height="74" fill="var(--sage)"/><circle cx="80" cy="44" r="30" fill="var(--card)" opacity=".6"/><circle cx="80" cy="44" r="19" fill="var(--sand)"/><circle cx="80" cy="44" r="8" fill="var(--cocoa)" opacity=".8"/>')
+  goal: CV('<rect width="160" height="74" fill="var(--sage)"/><circle cx="80" cy="44" r="30" fill="var(--card)" opacity=".6"/><circle cx="80" cy="44" r="19" fill="var(--sand)"/><circle cx="80" cy="44" r="8" fill="var(--cocoa)" opacity=".8"/>'),
+  rev: CV('<rect width="160" height="74" fill="var(--mist)"/><path d="M0 60Q40 52 70 44T130 26L160 18V74H0Z" fill="var(--sage)" opacity=".55"/><circle cx="70" cy="44" r="4" fill="var(--cocoa)"/><circle cx="130" cy="26" r="4" fill="var(--cocoa)"/><circle cx="30" cy="55" r="4" fill="var(--cocoa)"/>')
 };
 const HERO_ART = '<svg viewBox="0 0 200 150" preserveAspectRatio="xMaxYMid slice"><rect width="200" height="150" fill="var(--sand)"/><circle cx="150" cy="46" r="34" fill="var(--clay)"/><path d="M40 150V92a44 44 0 0 1 88 0V150Z" fill="var(--sage)"/><path d="M104 150a48 48 0 0 1 96 0Z" fill="var(--cocoa)" opacity=".7"/><circle cx="84" cy="92" r="9" fill="var(--card)"/><path d="M0 118h40" stroke="var(--cocoa)" stroke-width="1.2"/></svg>';
 function weekStrip(days) {
@@ -912,7 +914,7 @@ function home() {
   const meals = all('meal').filter(m => m.date === today()).length, goals = all('goal').filter(g => !g.done);
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(famTotal())}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中` };
+  const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(famTotal())}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中`, rev: wr(weekStart()).good ? '本週已寫反思' : '寫本週回顧' };
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date), ...all('health').filter(x => x.exercise_min > 0).map(x => x.date)]);
   return `<div class="card hero full" data-b="hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
@@ -928,7 +930,67 @@ function home() {
   <div class="tiles full" data-b="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, n]) => `<div class="tile" onclick="go('${k}')">${COVER[k]}<div class="tl"><div class="tn">${ICON[k]}${n}</div><div class="mut">${stat[k]}</div></div></div>`).join('')}</div>
   <div class="card quote full" data-b="quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>`;
 }
-const VIEWS = { home, bujo, habit, diet, fit, ffin, pfin: fin, know, goal };
+// ---------- 回顧：每週／每月／每年，自動彙整各頁數據並與前一期比較；自己的反思＋ Claude 的評論 ----------
+// 期別代碼：週＝該週一日期（yyyy-MM-dd）、月＝yyyy-MM、年＝yyyy
+const rvKind = () => sub.rev || 'week';
+const rvCur = k => k === 'week' ? weekStart() : k === 'month' ? month(today()) : today().slice(0, 4);
+const rvKey = () => ui.rv && ui.rv[rvKind()] || rvCur(rvKind());
+const rvShift = (k, key, n) => {
+  if (k === 'week') { const d = new Date(key + 'T00:00:00'); d.setDate(d.getDate() + 7 * n); return iso(d); }
+  if (k === 'month') { const d = new Date(key + '-01T00:00:00'); d.setMonth(d.getMonth() + n); return iso(d).slice(0, 7); }
+  return String(+key + n);
+};
+// 期間的起訖日（尚未結束的期間只算到今天，比較時前一期取同樣長度）
+const rvRange = (k, key) => { if (k === 'week') { const d = new Date(key + 'T00:00:00'); d.setDate(d.getDate() + 6); return [key, iso(d)]; } if (k === 'month') { const d = new Date(key + '-01T00:00:00'); d.setMonth(d.getMonth() + 1); d.setDate(0); return [key + '-01', iso(d)]; } return [key + '-01-01', key + '-12-31']; };
+const rvDays = (a, b) => { const out = []; for (const d = new Date(a + 'T00:00:00'); iso(d) <= b; d.setDate(d.getDate() + 1)) out.push(iso(d)); return out; };
+const rvLabel = (k, key) => { if (k === 'week') { const [a, b] = rvRange(k, key); return `${a.slice(0, 4)}／${+a.slice(5, 7)}/${+a.slice(8)}–${+b.slice(5, 7)}/${+b.slice(8)}`; } return k === 'month' ? `${key.slice(0, 4)} 年 ${+key.slice(5)} 月` : `${key} 年`; };
+window.rvGo = n => { const k = rvKind(), nx = rvShift(k, rvKey(), n); if (nx > rvCur(k)) return; ui.rv = { ...ui.rv, [k]: nx }; render(); };
+window.rvJump = v => { if (!v) return; const k = rvKind(), d = new Date(v + 'T00:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); ui.rv = { ...ui.rv, [k]: k === 'week' ? iso(d) : k === 'month' ? v.slice(0, 7) : v.slice(0, 4) }; render(); };
+function rvStats(a, b, k) {
+  const days = rvDays(a, b > today() ? today() : b), inR = d => d && d >= a && d <= b && d <= today();
+  const hs = all('habit'), hl = all('habitlog').filter(x => inR(x.date)).length || Object.keys(DB).filter(k => k.startsWith('hl_') && !DB[k].deleted && inR(k.slice(-10))).length;
+  const man = {}; all('workout').filter(x => inR(x.date)).forEach(x => man[x.date] = (man[x.date] || 0) + x.min);
+  const dm = d => Math.max(man[d] || 0, hv(d, 'exercise_min')), mins = days.map(dm);
+  const steps = days.map(d => hv(d, 'steps')).filter(Boolean), kc = days.map(dayKcal).filter(Boolean);
+  const W = weights().filter(x => inR(x.date)), t = ledger().filter(x => (x.ledger || 'personal') === 'personal' && inR(x.date));
+  const fm = famAll().filter(x => x.month >= a.slice(0, 7) && x.month <= b.slice(0, 7) && x.month <= month(today()));
+  return {
+    n: days.length,
+    habit: hs.length && days.length ? Math.round(hl / (hs.length * days.length) * 100) : null,
+    exMin: Math.round(mins.reduce((x, y) => x + y, 0)), exDays: mins.filter(Boolean).length,
+    steps: steps.length ? Math.round(steps.reduce((x, y) => x + y, 0) / steps.length) : null,
+    kcal: kc.length ? Math.round(kc.reduce((x, y) => x + y, 0) / kc.length) : null,
+    kg: W.length ? W[W.length - 1].kg : null, kgD: W.length > 1 ? Math.round((W[W.length - 1].kg - W[0].kg) * 10) / 10 : null,
+    out: t.filter(x => x.type === 'out' && !/代墊/.test(x.cat)).reduce((x, y) => x + y.amount, 0), inc: t.filter(x => x.type === 'in' && !/代墊/.test(x.cat)).reduce((x, y) => x + y.amount, 0),
+    fam: k !== 'week' && fm.length ? fm.reduce((x, y) => x + (y.total || 0), 0) : null,
+    todo: all('todo').filter(x => x.done && inR(x.doneAt)).length,
+    books: all('book').filter(x => x.status === 'done' && inR(x.statusAt)).length,
+    ideas: all('note').filter(x => inR(x.date || (x.created ? iso(new Date(x.created)) : ''))).length,
+    grat: all('gratitude').filter(x => inR(x.date) && (x.items || []).some(Boolean)).length
+  };
+}
+// 指標：[鍵, 名稱, 格式, 越高越好？]（null 表示不評好壞）
+const RVM = [['habit', '習慣完成率', v => v + '%', true], ['exMin', '運動分鐘', v => v.toLocaleString() + ' 分', true], ['exDays', '運動天數', v => v + ' 天', true], ['steps', '平均步數', v => v.toLocaleString(), true],
+  ['kcal', '平均熱量', v => v.toLocaleString() + ' kcal', null], ['kg', '體重', v => v + ' kg', false], ['out', '個人支出', money, false], ['inc', '個人收入', money, true], ['fam', '家庭支出', money, false],
+  ['todo', '完成待辦', v => v + ' 件', true], ['books', '讀完的書', v => v + ' 本', true], ['ideas', '新靈感', v => v + ' 則', true], ['grat', '寫感謝', v => v + ' 天', true]];
+const rvSave = (id, base, k, v) => put('review', { ...base, [k]: v }, id);
+window.rvSaveF = (k, key, f, v) => { if (k === 'week') wrSave(key, f, v); else { const id = 'rv_' + key, r = DB[id]; rvSave(id, { ...(r && !r.deleted ? r.data : {}), kind: k, key }, f, v); } };
+function rev() {
+  const k = rvKind(), key = rvKey(), [a, b] = rvRange(k, key), cur = key === rvCur(k);
+  // 前一期取同樣天數，未結束的期間才能公平比較
+  const pk = rvShift(k, key, -1), [pa, pb0] = rvRange(k, pk), S = rvStats(a, b, k), n = S.n, pb = iso(new Date(new Date(pa + 'T00:00:00').getTime() + (n - 1) * 864e5)), P = rvStats(pa, pb < pb0 ? pb : pb0, k);
+  const R = k === 'week' ? wr(key) : ((DB['rv_' + key] || {}).deleted ? {} : (DB['rv_' + key] || {}).data || {}), C = DB['rvc_' + key];
+  const arrow = (m, v, pv, up) => { if (v == null || pv == null || v === pv || up === null) return ''; const better = up ? v > pv : v < pv; return `<span class="${better ? 'up' : 'down'}">${v > pv ? '▲' : '▼'}</span>`; };
+  const tiles = RVM.filter(([m]) => S[m] != null && (S[m] !== 0 || P[m])).map(([m, l, f, up]) => `<div class="rvt"><div class="mut">${l}</div><div class="rvv">${f(S[m])} ${arrow(m, S[m], P[m], up)}</div><div class="mut" style="font-size:12px">${P[m] != null ? '前期 ' + f(P[m]) : '前期無資料'}${m === 'kg' && S.kgD ? `・期間 ${S.kgD > 0 ? '+' : ''}${S.kgD}` : ''}</div></div>`).join('');
+  const nm = { week: '週', month: '月', year: '年' }[k];
+  return seg('rev', [['week', '每週回顧'], ['month', '每月回顧'], ['year', '每年回顧']]) +
+  `<div class="card" data-b="rvhead"><div class="item" style="border:0;padding:0"><a class="wl" style="font-size:20px;padding:0 10px" onclick="rvGo(-1)">‹</a><b class="serif" style="font-size:17px">${rvLabel(k, key)}${cur ? `<span class="mut" style="font-size:13px">・本${nm}（到今天 ${n} 天）</span>` : ''}</b>${cur ? '<span style="width:30px"></span>' : `<a class="wl" style="font-size:20px;padding:0 10px" onclick="rvGo(1)">›</a>`}</div>
+    <div class="row" style="margin:8px 0 0;align-items:center"><span class="mut" style="flex:none">跳到</span><input type="date" style="margin:0" max="${today()}" value="${a}" onchange="rvJump(this.value)"></div></div>
+  <div class="card" data-b="rvstats"><h2>數據</h2>${tiles ? `<div class="rvg">${tiles}</div><p class="mut" style="margin:8px 0 0">▲▼ 與上一${nm}${cur ? '同樣天數' : ''}比較；綠色表示往好的方向。個人收支不含公司代墊；家庭支出只有月資料，不列在每週。</p>` : '<p class="empty">這段期間還沒有資料</p>'}</div>
+  <div class="card" data-b="rvclaude"><h2>Claude 的回顧與評論</h2>${C && !C.deleted && C.data.text ? `<div style="white-space:pre-wrap;line-height:1.8">${esc(C.data.text)}</div><p class="mut" style="margin:10px 0 0">${esc(C.data.at || '')} 寫的</p>` : `<p class="mut" style="margin:0">${cur ? `這${nm}結束後，Claude 會看你的數據和反思寫回顧。` : '這期還沒有評論。'}</p>`}</div>
+  <div class="card" data-b="rvself"><h2>我的反思</h2>${[['good', `這${nm}做得好的`], ['adjust', '可以調整的'], ['next', `下${nm}一個小改變`]].map(([f, l]) => `<div class="eyebrow" style="margin-top:6px">${l}</div><textarea style="min-height:64px" onchange="rvSaveF('${k}','${key}','${f}',this.value)">${esc(R[f] || '')}</textarea>`).join('')}<p class="mut" style="margin:6px 0 0">離開輸入框時自動儲存${k === 'week' ? '・與「每週習慣建立」頁的每週回顧是同一份' : ''}</p></div>`;
+}
+const VIEWS = { home, bujo, habit, diet, fit, ffin, pfin: fin, know, goal, rev };
 applyTheme(localStorage.getItem('lh_theme') || 'light');
 render(); sync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
