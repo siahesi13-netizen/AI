@@ -94,7 +94,8 @@ def stats(db, kind, key):
 
 def due(db):
     t = dt.date.today()
-    wk = (t - dt.timedelta(days=t.weekday() + 7)).isoformat()
+    # 週日晚上執行時回顧剛結束的這一週，其他日子回顧上一週
+    wk = (t - dt.timedelta(days=t.weekday() + (0 if t.weekday() == 6 else 7))).isoformat()
     mo = (t.replace(day=1) - dt.timedelta(days=1)).strftime('%Y-%m')
     yr = str(t.year - 1)
     out = [('week', wk), ('month', mo)] + ([('year', yr)] if t.month == 1 else [])
