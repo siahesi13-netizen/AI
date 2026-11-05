@@ -1,4 +1,4 @@
-const APP_VERSION = '1.33.2';
+const APP_VERSION = '1.34.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -890,6 +890,21 @@ const HERO_ART = '<svg viewBox="0 0 200 150" preserveAspectRatio="xMaxYMid slice
 function weekStrip(days) {
   return `<div class="card week full" data-b="week">${weekDates().map((d, i) => `<div class="${d === today() ? 'today' : ''}"><small>${WD[i]}</small><b>${+d.slice(8)}</b><i class="${days.has(d) ? 'on' : ''}"></i></div>`).join('')}</div>`;
 }
+// 每日感謝三件事：一天一筆（id grat_<日期>），輸入時直接存，不重繪以免打斷輸入；可切換到前幾天補寫或回看
+const gratOf = d => { const r = DB['grat_' + d]; return r && !r.deleted ? r.data.items || [] : []; };
+window.gratSave = (d, i, v) => { const it = [...gratOf(d)]; while (it.length < 3) it.push(''); it[i] = v.trim(); if (!it.some(Boolean) && !DB['grat_' + d]) return; put('gratitude', { date: d, items: it }, 'grat_' + d); };
+window.gratDay = n => { const d = new Date((ui.gd || today()) + 'T00:00:00'); d.setDate(d.getDate() + n); const k = iso(d); ui.gd = k > today() ? today() : k; render(); };
+function gratCard() {
+  const d = ui.gd || today(), it = gratOf(d), isT = d === today();
+  const days = all('gratitude').filter(x => (x.items || []).some(Boolean)).map(x => x.date).sort().reverse();
+  // 連續天數：今天還沒寫不算中斷，從昨天往回數
+  let streak = 0; const c = new Date(today() + 'T00:00:00'); if (!gratOf(today()).some(Boolean)) c.setDate(c.getDate() - 1); while (gratOf(iso(c)).some(Boolean)) { streak++; c.setDate(c.getDate() - 1); }
+  const past = days.filter(x => x !== d).slice(0, 30);
+  return `<div class="card" data-b="grat"><div class="item" style="border:0;padding:0 0 6px"><h2 style="margin:0">感謝的三件事</h2><span class="mut" style="white-space:nowrap"><a class="wl" onclick="gratDay(-1)">‹</a> ${isT ? '今天' : d.slice(5).replace('-', '/')} ${isT ? '' : `<a class="wl" onclick="gratDay(1)">›</a>`}</span></div>
+    ${[0, 1, 2].map(i => `<input style="margin:4px 0" placeholder="${i + 1}. 今天感謝…" value="${esc(it[i] || '')}" onchange="gratSave('${d}',${i},this.value)">`).join('')}
+    <p class="mut" style="margin:6px 0 0">${days.length ? `已經寫了 ${days.length} 天${streak > 1 ? `・連續 ${streak} 天` : ''}` : '每天寫下三件值得感謝的小事'}</p>
+    ${past.length ? `<details style="margin-top:6px"><summary class="sum2">回顧 <span class="mut">最近 ${past.length} 天</span></summary>${past.map(x => `<div class="item" style="display:block"><div class="mut">${x.slice(5).replace('-', '/')}</div>${gratOf(x).filter(Boolean).map(t => `<div>・${esc(t)}</div>`).join('')}</div>`).join('')}</details>` : ''}</div>`;
+}
 function home() {
   const f = fitStats(), P = finSum(), goalMin = setting('goal', 150);
   const todo = todosOpen();
@@ -903,6 +918,7 @@ function home() {
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
       ${cfg().token ? '' : `<br><span class="chip" onclick="$('#sync').click()">尚未同步 · 點此設定</span>`}</div><div class="hero-art">${HERO_ART}</div></div>
   ${weekStrip(active)}
+    ${gratCard()}
     <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     <div class="card"><h2>今日習慣</h2>${hs.map(x => `<div class="item"><span><i class="dot ${hDone(x.id, today()) ? 'on' : ''}" onclick="habitToggle('${x.id}','${today()}')"></i>${esc(x.name)}</span><span class="mut">${esc(x.tiny || '')}</span></div>`).join('') || `<p class="empty">還沒有習慣 · <a class="wl" onclick="go('habit')">建立第一個</a></p>`}</div>
     ${weightCard('hw', false)}
