@@ -99,7 +99,8 @@ def due(db):
     mo = (t.replace(day=1) - dt.timedelta(days=1)).strftime('%Y-%m')
     yr = str(t.year - 1)
     out = [('week', wk), ('month', mo)] + ([('year', yr)] if t.month == 1 else [])
-    return [(k, v) for k, v in out if 'rvc_' + v not in db]
+    # 期間還沒結束時寫的評論（期中評論）視為未完成，結束後重寫
+    return [(k, v) for k, v in out if (db.get('rvc_' + v) or {}).get('data', {}).get('at', '') < rng(k, v)[1].isoformat()]
 
 
 def main():
