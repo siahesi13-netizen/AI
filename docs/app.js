@@ -1,4 +1,4 @@
-const APP_VERSION = '1.35.1';
+const APP_VERSION = '1.36.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -409,7 +409,35 @@ function advView() {
   <div class="card" data-b="list"><details ${pSingle(key) ? 'open' : ''}><summary class="sum2">${pLabel(key)}明細 <span class="mut">${T.length} 筆・用上方的年份、月份選單切換</span></summary>${T.map(x => `<div class="item"><span>${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b></div>`).join('') || '<p class="empty">這段期間沒有代墊紀錄</p>'}</details></div>
   <p class="mut" style="margin:0 2px 12px">資料取自記帳裡分類名稱含「代墊」的帳目${start ? `，只計算 ${esc(start)} 之後的` : ''}。<a class="wl" onclick="advStart()">${start ? '修改起算日' : '設定起算日'}</a></p>`;
 }
-const pfinSeg = () => seg('pfin', [['led', '收支'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
+const pfinSeg = () => seg('pfin', [['led', '收支'], ['ana', '分析'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
+// ---------- 財務分析：以近幾個完整月份算平均收支、儲蓄率、錢花在哪、緊急備用金與投資進度；評論由 Claude 撰寫（advice_pfin） ----------
+// 分類分組：存起來的錢（投資、儲蓄）不算消費；公司代墊另計
+const FIN_SAVE = ['投資', '儲蓄'], FIN_NEED = /^(家庭開支|醫療|保險通訊訂閱|個人交通|個人-日用品)/;
+window.anaN = n => { ui.anaN = n; render(); };
+function anaView() {
+  const n = ui.anaN || 6, cur = month(today()), ms = [];
+  for (let d = new Date(cur + '-01T00:00:00'), i = 0; i < n; i++) { d.setMonth(d.getMonth() - 1); ms.push(iso(d).slice(0, 7)); }
+  const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && ms.includes(month(x.date)) && !/代墊/.test(x.cat || ''));
+  const sum = f => T.filter(f).reduce((a, x) => a + x.amount, 0);
+  const inc = sum(x => x.type === 'in'), sal = sum(x => x.type === 'in' && x.cat === '薪水'), saved = sum(x => x.type === 'out' && FIN_SAVE.includes(x.cat));
+  const spend = sum(x => x.type === 'out' && !FIN_SAVE.includes(x.cat)), need = sum(x => x.type === 'out' && FIN_NEED.test(x.cat || '')), want = spend - need;
+  const avg = v => Math.round(v / n), rate = sal ? Math.round((sal - spend) / sal * 100) : 0;
+  const by = {}; T.filter(x => x.type === 'out' && !FIN_SAVE.includes(x.cat)).forEach(x => by[x.cat || '其他'] = (by[x.cat || '其他'] || 0) + x.amount);
+  const cats = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  const efNow = +setting('emergency_fund', 0) || 0, efGoal = avg(spend) * 6, invVal = all('holding').reduce((a, h) => a + (h.value || 0), 0);
+  const bar = (v, g) => `<div class="bar" style="margin:6px 0 4px"><i style="width:${g ? Math.min(100, v / g * 100) : 0}%"></i></div>`;
+  return `<div class="card" data-b="anahead"><div class="row" style="margin:0;align-items:center"><span class="mut" style="flex:none">計算期間</span><select onchange="anaN(+this.value)" style="margin:0">${[3, 6, 12].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>最近 ${v} 個完整月份</option>`).join('')}</select></div><p class="mut" style="margin:6px 0 0">${ms[ms.length - 1]} ～ ${ms[0]}，不含公司代墊；投資、儲蓄算「存起來的錢」，不算消費</p></div>
+  <div class="card" data-b="anakpi"><div class="grid">
+    <div><div class="eyebrow">平均每月薪水</div><div class="big">${money(avg(sal))}</div><div class="mut">含其他收入 ${money(avg(inc))}</div></div>
+    <div><div class="eyebrow">平均每月消費</div><div class="big ${spend > sal ? 'bad' : ''}">${money(avg(spend))}</div><div class="mut">必要 ${money(avg(need))}・彈性 ${money(avg(want))}</div></div>
+    <div><div class="eyebrow">平均每月存下</div><div class="big">${money(avg(saved))}</div><div class="mut">投資＋儲蓄</div></div>
+    <div><div class="eyebrow">儲蓄率</div><div class="big ${rate < 10 ? 'bad' : ''}">${rate}%</div><div class="mut">（薪水 − 消費）÷ 薪水，常見目標 20% 以上</div></div>
+  </div></div>
+  <div class="card" data-b="anacats"><h2>錢花在哪裡</h2>${cats.length ? pieCall(cats, 8) + pieTable(cats, spend, pieOf(cats, 8).colors, { id: 'ana', limit: 10, tag: (c, v, i) => i === 0 ? '<em class="tagx">最多</em>' : '' }) + `<p class="mut" style="margin:6px 0 0">平均每月：${cats.slice(0, 5).map(([c, v]) => `${esc(c)} ${money(avg(v))}`).join('、')}</p>` : '<p class="empty">這段期間沒有記帳</p>'}</div>
+  <div class="card" data-b="anaef"><h2>緊急備用金</h2><p class="mut" style="margin:0">目標：6 個月的消費 ≈ <b>${money(efGoal)}</b>（以平均每月消費 ${money(avg(spend))} 計）</p>${bar(efNow, efGoal)}<div class="item" style="border:0;padding:0"><span>目前 <b>${money(efNow)}</b>${efGoal ? `・達成 ${Math.round(efNow / efGoal * 100)}%` : ''}</span><a class="wl" onclick="editSetting('emergency_fund','目前存在緊急備用金的金額（只填數字）','0')">更新金額</a></div><p class="mut" style="margin:6px 0 0">緊急備用金要放在隨時能領、不會跌價的地方（活存、定存），跟投資分開</p></div>
+  <div class="card" data-b="anainv"><h2>投資與退休</h2><div class="item"><span>平均每月投入投資</span><b>${money(avg(sum(x => x.type === 'out' && x.cat === '投資')))}</b></div><div class="item"><span>平均每月存款</span><b>${money(avg(sum(x => x.type === 'out' && x.cat === '儲蓄')))}</b></div><div class="item"><span>持有部位市值（投資頁）</span><b>${invVal ? money(invVal) : '—'}</b></div></div>
+  ${advice('pfin')}`;
+}
 // 記帳分頁：新增一筆帳，下方列出最近新增的幾筆方便確認
 // 整理已匯入：列出已匯入 Numbers 的那幾筆，使用者確認後才從平台刪掉（Numbers 裡的不受影響）
 window.finTidy = () => { const L = Object.values(DB).filter(r => r.type === 'txn' && !r.deleted && r.data.exported); if (!L.length) return; if (!confirm(`以下 ${L.length} 筆已匯入 Numbers，要從平台刪除嗎？Numbers 裡的不受影響。\n\n` + L.map(r => `${r.data.date.slice(5)} ${r.data.cat} ${money(r.data.amount)}${r.data.note ? ' ' + r.data.note : ''}`).join('\n'))) return; L.forEach(r => { DB[r.id] = { ...r, deleted: true, updated_at: Date.now() }; if (!dirty.includes(r.id)) dirty.push(r.id); }); persist(); sync(); render(); };
@@ -424,6 +452,7 @@ function finAddView() {
 function fin() {
   if (sub.pfin === 'inv') return pfinSeg() + invest();
   if (sub.pfin === 'add') return pfinSeg() + finAddView();
+  if (sub.pfin === 'ana') return pfinSeg() + anaView();
   if (sub.pfin === 'adv') return pfinSeg() + advView();
   const m = ui.m || month(today()), isY = !pSingle(m), t = txns(m), { inc, out, budget: bud } = finSum(m), by = {}, B1 = setting('catbudget', {});
   // 整年檢視：預算乘上該年有記帳的月數
@@ -453,7 +482,7 @@ function fin() {
     top && rOut ? `花最多的是「${esc(top[0])}」<b>${money(top[1])}</b>，佔實際支出 ${pct(top[1], rOut)}%` : '',
     over.length ? `超出預算 ${over.length} 類：${over.slice(0, 4).map(c => `${esc(c)}（+${money(by[c] - B[c])}）`).join('、')}` : (Object.keys(B).length && rOut ? '所有分類都在預算內' : ''),
     up && up[1] > 0 && Object.keys(pb).length ? `比${m.endsWith('~') ? '前一年同期' : isY ? '前一年' : '上個月'}增加最多的是「${esc(up[0])}」，多了 ${money(up[1])}` : ''
-  ]) + yoy + advice('pfin') : yoy;
+  ]) + yoy : yoy;
   return pfinSeg() + `<div class="card" data-b="sum">${pSelect(m, years, 'finPick')}${isY ? `<p class="mut" style="margin:6px 0 0">${pLabel(m)}・${nM} 個月有記帳</p>` : ''}
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
