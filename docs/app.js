@@ -1,4 +1,4 @@
-const APP_VERSION = '1.36.0';
+const APP_VERSION = '1.36.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -412,11 +412,14 @@ function advView() {
 const pfinSeg = () => seg('pfin', [['led', '收支'], ['ana', '分析'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
 // ---------- 財務分析：以近幾個完整月份算平均收支、儲蓄率、錢花在哪、緊急備用金與投資進度；評論由 Claude 撰寫（advice_pfin） ----------
 // 分類分組：存起來的錢（投資、儲蓄）不算消費；公司代墊另計
-const FIN_SAVE = ['投資', '儲蓄'], FIN_NEED = /^(家庭開支|醫療|保險通訊訂閱|個人交通|個人-日用品)/;
-window.anaN = n => { ui.anaN = n; render(); };
+const FIN_SAVE = ['投資', '儲蓄'], FIN_NEED = /^(家庭開支|H-|醫療|保險|個人交通|個人-日用品|牙套|電話|捷運|機車|計程車|家裡用品|iCloud|Google|藥|醫生)/; // 含 2026/5 以前舊記帳表的分類名稱
+window.anaN = n => { ui.anaN = /^\d+$/.test(n) ? +n : n; render(); };
 function anaView() {
-  const n = ui.anaN || 6, cur = month(today()), ms = [];
-  for (let d = new Date(cur + '-01T00:00:00'), i = 0; i < n; i++) { d.setMonth(d.getMonth() - 1); ms.push(iso(d).slice(0, 7)); }
+  // 期間：最近 3／6／12 個完整月份，或某一整年（今年算到本月）
+  const P = ui.anaN || 6, cur = month(today()), ms = [], ny = +today().slice(0, 4);
+  if (typeof P === 'string') { for (let m = 1; m <= 12; m++) { const k = P.slice(1) + '-' + String(m).padStart(2, '0'); if (k <= cur) ms.unshift(k); } }
+  else for (let d = new Date(cur + '-01T00:00:00'), i = 0; i < P; i++) { d.setMonth(d.getMonth() - 1); ms.push(iso(d).slice(0, 7)); }
+  const n = ms.length || 1;
   const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && ms.includes(month(x.date)) && !/代墊/.test(x.cat || ''));
   const sum = f => T.filter(f).reduce((a, x) => a + x.amount, 0);
   const inc = sum(x => x.type === 'in'), sal = sum(x => x.type === 'in' && x.cat === '薪水'), saved = sum(x => x.type === 'out' && FIN_SAVE.includes(x.cat));
@@ -426,7 +429,7 @@ function anaView() {
   const cats = Object.entries(by).sort((a, b) => b[1] - a[1]);
   const efNow = +setting('emergency_fund', 0) || 0, efGoal = avg(spend) * 6, invVal = all('holding').reduce((a, h) => a + (h.value || 0), 0);
   const bar = (v, g) => `<div class="bar" style="margin:6px 0 4px"><i style="width:${g ? Math.min(100, v / g * 100) : 0}%"></i></div>`;
-  return `<div class="card" data-b="anahead"><div class="row" style="margin:0;align-items:center"><span class="mut" style="flex:none">計算期間</span><select onchange="anaN(+this.value)" style="margin:0">${[3, 6, 12].map(v => `<option value="${v}" ${v === n ? 'selected' : ''}>最近 ${v} 個完整月份</option>`).join('')}</select></div><p class="mut" style="margin:6px 0 0">${ms[ms.length - 1]} ～ ${ms[0]}，不含公司代墊；投資、儲蓄算「存起來的錢」，不算消費</p></div>
+  return `<div class="card" data-b="anahead"><div class="row" style="margin:0;align-items:center"><span class="mut" style="flex:none">計算期間</span><select onchange="anaN(this.value)" style="margin:0">${[3, 6, 12].map(v => `<option value="${v}" ${v === P ? 'selected' : ''}>最近 ${v} 個完整月份</option>`).join('')}${[ny, ny - 1, ny - 2].map(y => `<option value="y${y}" ${'y' + y === P ? 'selected' : ''}>${y} 整年${y === ny ? '（到本月）' : ''}</option>`).join('')}</select></div><p class="mut" style="margin:6px 0 0">${ms[ms.length - 1]} ～ ${ms[0]}（${n} 個月，金額為每月平均），不含公司代墊；投資、儲蓄算「存起來的錢」，不算消費</p></div>
   <div class="card" data-b="anakpi"><div class="grid">
     <div><div class="eyebrow">平均每月薪水</div><div class="big">${money(avg(sal))}</div><div class="mut">含其他收入 ${money(avg(inc))}</div></div>
     <div><div class="eyebrow">平均每月消費</div><div class="big ${spend > sal ? 'bad' : ''}">${money(avg(spend))}</div><div class="mut">必要 ${money(avg(need))}・彈性 ${money(avg(want))}</div></div>
