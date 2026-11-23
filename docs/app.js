@@ -1,4 +1,4 @@
-const APP_VERSION = '1.37.0';
+const APP_VERSION = '1.38.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -947,6 +947,20 @@ function gratCard() {
     <p class="mut" style="margin:6px 0 0">${days.length ? `已經寫了 ${days.length} 天${streak > 1 ? `・連續 ${streak} 天` : ''}` : '每天寫下三件值得感謝的小事'}</p>
     ${past.length ? `<details style="margin-top:6px"><summary class="sum2">回顧 <span class="mut">最近 ${past.length} 天</span></summary>${past.map(x => `<div class="item" style="display:block"><div class="mut">${x.slice(5).replace('-', '/')}</div>${gratOf(x).filter(Boolean).map(t => `<div>・${esc(t)}</div>`).join('')}</div>`).join('')}</details>` : ''}</div>`;
 }
+// 本月三件事（2026/11/24 起 30 天）：每晚打開今日頁、每週重訓 2 次、隨手記帳
+const FOCUS_START = '2026-11-24';
+const checkedIn = d => all('habitlog').some(x => x.date === d) || gratOf(d).some(Boolean);
+function focusCard() {
+  const s0 = setting('focus_start', FOCUS_START), day = Math.floor((new Date(today() + 'T00:00:00') - new Date(s0 + 'T00:00:00')) / 864e5) + 1;
+  if (day < 1 || day > 30) return '';
+  const D = weekDates(), sg = setting('strength_goal', 2), n = all('workout').filter(x => x.kind === '重訓' && x.date >= D[0] && x.date <= D[6]).length;
+  const days = Array.from({ length: day }, (_, i) => iso(new Date(new Date(s0 + 'T00:00:00').getTime() + i * 864e5))), done = days.filter(checkedIn).length, last = ledger().filter(x => !/^old/.test(x.id)).map(x => x.date).sort().pop() || '';
+  const y = iso(new Date(Date.now() - 864e5)), ok = (b, t) => `<i class="dot ${b ? 'on' : ''}" style="flex:none"></i><span>${t}</span>`;
+  return `<div class="card full" data-b="focus"><div class="item" style="border:0;padding:0 0 6px"><h2 style="margin:0">這個月只抓三件事</h2><span class="mut">第 ${day} / 30 天</span></div>
+    <div class="item" style="justify-content:flex-start;gap:10px">${ok(checkedIn(today()), `每晚刷完 Kiki 的牙，打開今日頁勾習慣、寫一件感謝 <span class="mut">・已做到 ${done} / ${days.length} 天</span>`)}</div>
+    <div class="item" style="justify-content:flex-start;gap:10px">${ok(n >= sg, `每週重訓 ${sg} 次 <span class="mut">・本週 ${n} 次</span>`)}</div>
+    <div class="item" style="justify-content:flex-start;gap:10px;border:0">${ok(last >= y, `花錢當下就傳給 Claude 記帳 <span class="mut">・帳記到 ${last ? last.slice(5).replace('-', '/') : '—'}</span>`)}</div></div>`;
+}
 function home() {
   const f = fitStats(), P = finSum(), goalMin = setting('goal', 150);
   const todo = todosOpen();
@@ -960,6 +974,7 @@ function home() {
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
       ${cfg().token ? '' : `<br><span class="chip" onclick="$('#sync').click()">尚未同步 · 點此設定</span>`}</div><div class="hero-art">${HERO_ART}</div></div>
   ${weekStrip(active)}
+    ${focusCard()}
     ${gratCard()}
     <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     <div class="card"><h2>今日習慣</h2>${hs.map(x => `<div class="item"><span><i class="dot ${hDone(x.id, today()) ? 'on' : ''}" onclick="habitToggle('${x.id}','${today()}')"></i>${esc(x.name)}</span><span class="mut">${esc(x.tiny || '')}</span></div>`).join('') || `<p class="empty">還沒有習慣 · <a class="wl" onclick="go('habit')">建立第一個</a></p>`}</div>
