@@ -701,7 +701,7 @@ function habit() {
   ${weekLog(dates)}`;
 }
 
-// ---------- 飲食管理：熱量與營養素來自 Apple 健康（OtterLife 寫入，由手機捷徑上傳）；也可以手動記一餐 ----------
+// ---------- 飲食管理：熱量與營養素來自 Apple 健康（CaLoMei 寫入，由手機捷徑上傳；2026-11 前是 OtterLife）；也可以手動記一餐 ----------
 const SLOTS = ['早餐', '午餐', '晚餐', '點心'], waterId = d => 'water_' + d, cups = d => DB[waterId(d)] && !DB[waterId(d)].deleted ? DB[waterId(d)].data.cups : 0;
 window.dietDate = d => { ui.dd = d; render(); };
 window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, waterId(ui.dd)); render(); };
