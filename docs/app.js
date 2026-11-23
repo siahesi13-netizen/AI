@@ -1,4 +1,4 @@
-const APP_VERSION = '1.36.1';
+const APP_VERSION = '1.36.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -439,7 +439,7 @@ function anaView() {
   <div class="card" data-b="anacats"><h2>錢花在哪裡</h2>${cats.length ? pieCall(cats, 8) + pieTable(cats, spend, pieOf(cats, 8).colors, { id: 'ana', limit: 10, tag: (c, v, i) => i === 0 ? '<em class="tagx">最多</em>' : '' }) + `<p class="mut" style="margin:6px 0 0">平均每月：${cats.slice(0, 5).map(([c, v]) => `${esc(c)} ${money(avg(v))}`).join('、')}</p>` : '<p class="empty">這段期間沒有記帳</p>'}</div>
   <div class="card" data-b="anaef"><h2>緊急備用金</h2><p class="mut" style="margin:0">目標：6 個月的消費 ≈ <b>${money(efGoal)}</b>（以平均每月消費 ${money(avg(spend))} 計）</p>${bar(efNow, efGoal)}<div class="item" style="border:0;padding:0"><span>目前 <b>${money(efNow)}</b>${efGoal ? `・達成 ${Math.round(efNow / efGoal * 100)}%` : ''}</span><a class="wl" onclick="editSetting('emergency_fund','目前存在緊急備用金的金額（只填數字）','0')">更新金額</a></div><p class="mut" style="margin:6px 0 0">緊急備用金要放在隨時能領、不會跌價的地方（活存、定存），跟投資分開</p></div>
   <div class="card" data-b="anainv"><h2>投資與退休</h2><div class="item"><span>平均每月投入投資</span><b>${money(avg(sum(x => x.type === 'out' && x.cat === '投資')))}</b></div><div class="item"><span>平均每月存款</span><b>${money(avg(sum(x => x.type === 'out' && x.cat === '儲蓄')))}</b></div><div class="item"><span>持有部位市值（投資頁）</span><b>${invVal ? money(invVal) : '—'}</b></div></div>
-  ${advice('pfin')}`;
+  ${typeof P === 'string' ? advice('pfin_' + P) || `<div class="card" data-b="advice"><h2>建議</h2><p class="mut" style="margin:0">${P.slice(1)} 年的評論還沒寫，跟 Claude 說一聲就會補上。</p></div>` : advice('pfin')}`;
 }
 // 記帳分頁：新增一筆帳，下方列出最近新增的幾筆方便確認
 // 整理已匯入：列出已匯入 Numbers 的那幾筆，使用者確認後才從平台刪掉（Numbers 裡的不受影響）

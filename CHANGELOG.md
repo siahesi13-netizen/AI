@@ -1,6 +1,9 @@
 # 更新紀錄
 格式：[語意化版本](https://semver.org/lang/zh-TW/)。每次發版：改 `docs/app.js` 的 `APP_VERSION`、`docs/sw.js` 的快取名稱、`lifehub/cloud/Code.gs` 的 `VERSION`，更新本檔，合併後打 tag。
 
+## [1.36.2] - 2026-11-23
+- 財務分析：選整年度時顯示該年度專屬的評論（advice_pfin_y年份）
+
 ## [1.36.1] - 2026-11-23
 - 財務分析可選整年度（今年到本月、去年、前年）
 
