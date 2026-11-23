@@ -1,4 +1,4 @@
-const APP_VERSION = '1.36.3';
+const APP_VERSION = '1.37.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -252,10 +252,14 @@ const bodyKg = () => { const w = weights(); return w.length ? w[w.length - 1].kg
 window.weightSave = pre => { const kg = Math.round((+val(pre + 'kg') || 0) * 100) / 100, d = val(pre + 'd') || today(); if (!(kg > 0)) return; put('weight', { date: d, kg }, 'wt_' + d); render(); };
 function spark(vals) { if (vals.length < 2) return ''; const mn = Math.min(...vals), mx = Math.max(...vals), sp = (mx - mn) || 1, W = 300, H = 70, pt = (v, i) => `${(i / (vals.length - 1) * (W - 8) + 4).toFixed(1)},${(H - 6 - (v - mn) / sp * (H - 12)).toFixed(1)}`;
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="體重趨勢" style="width:100%;height:70px;display:block;margin:8px 0 2px"><polyline points="${vals.map(pt).join(' ')}" fill="none" stroke="var(--bar)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="${pt(vals[vals.length - 1], vals.length - 1).split(',')[0]}" cy="${pt(vals[vals.length - 1], vals.length - 1).split(',')[1]}" r="3" fill="var(--cocoa)"/></svg>`; }
+window.weightGoal = () => { const g = prompt('目標體重（公斤）', setting('weight_goal', '')); if (g !== null) { setSetting('weight_goal', +g || ''); render(); } };
+// 最近幾週（週一起算）的平均體重，看趨勢比看單日數字準
+const weekAvgs = (n = 4) => { const w = weights(), out = []; for (let i = n - 1; i >= 0; i--) { const D = weekDates(-i), l = w.filter(x => x.date >= D[0] && x.date <= D[6]); out.push([D[0], l.length ? Math.round(l.reduce((a, x) => a + x.kg, 0) / l.length * 10) / 10 : null]); } return out; };
 function weightCard(pre, full) {
   const w = weights(), last = w[w.length - 1], prev = w[w.length - 2], td = w.find(x => x.date === today()), diff = last && prev ? Math.round((last.kg - prev.kg) * 100) / 100 : 0, recent = w.slice(-30);
   return `<div class="card" data-b="weight"><h2>體重</h2><div class="row" style="align-items:center">${full ? `<input type="date" id="${pre}d" value="${today()}" aria-label="日期">` : ''}<input id="${pre}kg" type="number" inputmode="decimal" step="0.01" placeholder="${td ? '今天已記 ' + td.kg : '今天的體重'}（公斤）" onkeydown="event.key==='Enter'&&weightSave('${pre}')"><button class="b" style="flex:0 0 76px" onclick="weightSave('${pre}')">記錄</button></div>
     ${last ? `<div style="margin-top:8px"><span class="big">${last.kg}</span><small class="mut"> kg · ${last.date.slice(5).replace('-', '/')}${prev ? ` · 較前一次 ${diff > 0 ? '+' : ''}${diff}` : ''}</small></div>` : '<p class="empty" style="margin-top:8px">還沒有紀錄</p>'}
+    ${full ? (() => { const g = +setting('weight_goal', 0), wa = weekAvgs(); return `<div class="item" style="border:0;padding:6px 0 0"><span class="mut">目標 ${g ? `<b>${g}</b> kg${last ? `・還差 ${Math.round((last.kg - g) * 10) / 10} kg` : ''}` : '未設定'}</span><a class="wl" onclick="weightGoal()">${g ? '修改' : '設定目標'}</a></div>${wa.some(x => x[1]) ? `<div class="mut" style="margin-top:4px">每週平均：${wa.map(([d, v]) => `${+d.slice(5, 7)}/${+d.slice(8)} 週 ${v ?? '–'}`).join('・')}</div>` : ''}`; })() : ''}
     ${full ? spark(recent.map(x => x.kg)) + (recent.length > 1 ? `<div class="mut" style="display:flex;justify-content:space-between"><span>${recent[0].date.slice(5).replace('-', '/')}</span><span>最低 ${Math.min(...recent.map(x => x.kg))} · 最高 ${Math.max(...recent.map(x => x.kg))}</span><span>${last.date.slice(5).replace('-', '/')}</span></div>` : '') + (w.length ? `<details style="margin-top:8px"><summary class="mut" style="cursor:pointer">所有紀錄（${w.length}）</summary>${w.slice().reverse().slice(0, 60).map(x => `<div class="item"><span>${x.date}</span><span><b>${x.kg}</b> kg<button class="x" onclick="del('${x.id}')" aria-label="刪除">✕</button></span></div>`).join('')}</details>` : '') : ''}</div>`;
 }
 const wkKcal = x => { const kg = bodyKg(); return kg && x.min ? Math.round((MET[x.kind] || 4) * (INTENS[x.intensity] || INTENS.mid)[1] * kg * x.min / 60) : 0; };
@@ -266,6 +270,7 @@ const fitRead = pre => ({ date: val(pre + 'd') || today(), kind: val(pre + 'k'),
 window.fitAdd = () => { const d = fitRead('f'); if (!d.min) return; put('workout', d); render(); };
 window.fitEdit = id => { ui.editFit = id; render(); };
 window.fitSave = id => { const d = fitRead('e'); if (!d.min) return; patch(id, d); ui.editFit = null; render(); };
+window.strengthGoal = () => { const g = prompt('每週重訓目標（次）', setting('strength_goal', 2)); if (g) { setSetting('strength_goal', +g); render(); } };
 window.fitGoal = () => { const g = prompt('每週運動目標（分鐘）', setting('goal', 150)); if (g) { setSetting('goal', +g); render(); } };
 function fitStats() {
   const w = all('workout'), dates = weekDates(), man = {}; w.forEach(x => man[x.date] = (man[x.date] || 0) + x.min);
@@ -283,6 +288,7 @@ function fit() {
   return `<div class="card"><h2>本週 <a class="wl" onclick="fitGoal()">目標 ${goal} 分</a></h2><div class="bar"><i style="width:${Math.min(100, s.min / goal * 100)}%"></i></div>
     <div class="grid" style="margin-top:12px"><div>${num(s.min, '分鐘')}<div class="mut">運動時間</div></div><div>${num(kcal, 'kcal')}<div class="mut">運動消耗（估算）</div></div><div>${num(wk.length, '次')}<div class="mut">運動次數</div></div><div>${num(s.streak, '天')}<div class="mut">連續運動</div></div></div>
     <p class="mut" style="margin:10px 0 0">${kg ? `以最新體重 ${kg} kg 估算` : '在下方記錄體重後，才能估算消耗的熱量'}，數字是依運動種類、強度、時間推估的概略值。</p></div>
+  ${(() => { const sg = setting('strength_goal', 2), n = wk.filter(x => x.kind === '重訓').length, y = wk.filter(x => x.kind === '瑜珈').length; return `<div class="card" data-b="strength"><h2>本週重訓 <a class="wl" onclick="strengthGoal()">目標 ${sg} 次</a></h2><div class="hw">${Array.from({ length: Math.max(sg, n) }, (_, i) => `<span class="hc ${i < n ? 'on' : ''}"></span>`).join('')}</div><div class="mut" style="margin-top:6px">${n} / ${sg} 次${n >= sg ? '・達成 ✓' : ''}・瑜珈 ${y} 次</div></div>`; })()}
   ${weightCard('fw', true)}
   <div class="card"><h2>記錄運動</h2>${fitForm({}, 'f')}<button class="b" onclick="fitAdd()">記錄</button></div>
   <div class="card"><h2>每日運動分鐘</h2>${bars(D, D.map(s.dayMin))}</div>
@@ -700,6 +706,7 @@ const SLOTS = ['早餐', '午餐', '晚餐', '點心'], waterId = d => 'water_' 
 window.dietDate = d => { ui.dd = d; render(); };
 window.waterSet = n => { put('water', { date: ui.dd, cups: Math.max(0, n) }, waterId(ui.dd)); render(); };
 window.waterGoal = () => { const g = prompt('每日喝水目標（杯）', setting('water_goal', 8)); if (g) { setSetting('water_goal', +g); render(); } };
+window.proteinGoal = () => { const g = prompt('每日蛋白質目標（克）', setting('protein_goal', 90)); if (g) { setSetting('protein_goal', +g); render(); } };
 window.kcalGoal = () => { const g = prompt('每日攝取熱量目標（kcal）', setting('kcal_goal', 1800)); if (g) { setSetting('kcal_goal', +g); render(); } };
 const mealsOf = d => all('meal').filter(m => m.date === d), mealSum = (d, k) => mealsOf(d).reduce((a, m) => a + (+m[k] || 0), 0);
 const dayKcal = d => mealSum(d, 'kcal') || hv(d, 'diet_kcal');
@@ -722,6 +729,7 @@ function diet() {
   <div class="card"><h2>${d === today() ? '今日' : d} 餐點</h2>${SLOTS.map(sl => { const l = ms.filter(m => m.slot === sl); return l.length ? `<div class="eyebrow" style="margin-top:8px">${sl} · ${Math.round(l.reduce((a, m) => a + (+m.kcal || 0), 0))} kcal</div>` + l.map(row).join('') : ''; }).join('') || '<p class="empty">這一天還沒有記錄</p>'}</div>
   <details class="card" data-b="mealform"${ms.length ? ' open' : ''}><summary style="cursor:pointer"><b class="serif">手動記一餐</b></summary><div class="row" style="margin-top:10px"><select id="ms" style="flex:0 0 96px">${SLOTS.map(x => `<option>${x}</option>`).join('')}</select><input id="mt" placeholder="吃了什麼" onkeydown="event.key==='Enter'&&mealAdd()"></div>
     ${macroIn('m', {})}<input id="mn" placeholder="備註：飽足感、心情（選填）"><button class="b" onclick="mealAdd()">存入</button><p class="mut" id="mst" style="margin:4px 0 0;min-height:1.2em"></p></details>
+  <div class="card" data-b="protein"><h2>蛋白質 <a class="wl" onclick="proteinGoal()">目標 ${setting('protein_goal', 90)} g</a></h2>${num(P, 'g')}<div class="bar" style="margin:8px 0 4px"><i style="width:${Math.min(100, P / setting('protein_goal', 90) * 100)}%"></i></div><div class="mut">${P ? (P >= setting('protein_goal', 90) ? '達成 ✓' : `還差 ${Math.round(setting('protein_goal', 90) - P)} g`) : '這一天還沒有資料'}・增肌減脂時每餐都要有一份蛋白質</div></div>
   <div class="card"><h2>三大營養素</h2>${macro('蛋白質', P, 4)}${macro('碳水化合物', C, 4)}${macro('脂肪', F, 9)}</div>
   <div class="card"><h2>本週攝取熱量</h2>${bars(dates, dates.map(dayKcal))}</div>
   <div class="card"><h2>喝水 <a class="wl" onclick="waterGoal()">目標 ${wg} 杯</a></h2>${ml ? `<div class="mut" style="margin-bottom:6px">Apple 健康：${Math.round(ml).toLocaleString()} ml</div>` : ''}<div class="hw">${Array.from({ length: Math.max(wg, c) }, (_, i) => `<button class="hc ${i < c ? 'on' : ''}" onclick="waterSet(${i < c ? i : i + 1})" aria-label="第 ${i + 1} 杯"></button>`).join('')}</div><div class="mut" style="margin-top:6px">${c} / ${wg} 杯</div></div>`;
