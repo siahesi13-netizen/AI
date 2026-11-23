@@ -1,4 +1,4 @@
-const APP_VERSION = '1.38.0';
+const APP_VERSION = '1.38.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -958,7 +958,7 @@ function focusCard() {
   const y = iso(new Date(Date.now() - 864e5)), ok = (b, t) => `<i class="dot ${b ? 'on' : ''}" style="flex:none"></i><span>${t}</span>`;
   return `<div class="card full" data-b="focus"><div class="item" style="border:0;padding:0 0 6px"><h2 style="margin:0">這個月只抓三件事</h2><span class="mut">第 ${day} / 30 天</span></div>
     <div class="item" style="justify-content:flex-start;gap:10px">${ok(checkedIn(today()), `每晚刷完 Kiki 的牙，打開今日頁勾習慣、寫一件感謝 <span class="mut">・已做到 ${done} / ${days.length} 天</span>`)}</div>
-    <div class="item" style="justify-content:flex-start;gap:10px">${ok(n >= sg, `每週重訓 ${sg} 次 <span class="mut">・本週 ${n} 次</span>`)}</div>
+    <div class="item" style="justify-content:flex-start;gap:10px">${ok(n >= sg, `每週重訓 ${sg} 次（週四、週六，週日補） <span class="mut">・本週 ${n} 次</span>`)}</div>
     <div class="item" style="justify-content:flex-start;gap:10px;border:0">${ok(last >= y, `花錢當下就傳給 Claude 記帳 <span class="mut">・帳記到 ${last ? last.slice(5).replace('-', '/') : '—'}</span>`)}</div></div>`;
 }
 function home() {
@@ -969,6 +969,8 @@ function home() {
   const h = new Date().getHours(), greet = h < 5 ? '夜深了' : h < 11 ? '早安' : h < 18 ? '午安' : '晚安';
   const date = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
   const stat = { bujo: `${todo.length} 項待辦 · ${all('shop').filter(x => !x.bought).length} 項待買`, habit: hs.length ? `今日 ${hToday} / ${hs.length}` : '尚未建立', diet: dayKcal(today()) ? `今日 ${Math.round(dayKcal(today()))} kcal` : `今日 ${meals} 餐 · 水 ${cups(today())} 杯`, fit: `${f.min} / ${goalMin} 分`, ffin: `本月 ${money(famTotal())}`, pfin: `本月 ${money(P.out)}`, know: `${rd.length} 本在讀`, goal: `${goals.length} 個進行中`, rev: wr(weekStart()).good ? '本週已寫反思' : '寫本週回顧' };
+  // 專注期間（三件事卡片顯示時）今日頁只留打卡相關區塊，其他收起來，可隨時展開
+  const focusOn = !!focusCard() && !ui.homeAll;
   const active = new Set([...f.w.map(x => x.date), ...all('habitlog').map(l => l.date), ...all('health').filter(x => x.exercise_min > 0).map(x => x.date)]);
   return `<div class="card hero full" data-b="hero"><div class="hero-t"><div class="eyebrow">${date}</div><h2>${greet}，Eilis</h2>
       <q class="idq" onclick="editSetting('identity','身分宣言：我是一個…的人',DEF_ID)">${esc(setting('identity', DEF_ID))}</q>
@@ -976,14 +978,16 @@ function home() {
   ${weekStrip(active)}
     ${focusCard()}
     ${gratCard()}
-    <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     <div class="card"><h2>今日習慣</h2>${hs.map(x => `<div class="item"><span><i class="dot ${hDone(x.id, today()) ? 'on' : ''}" onclick="habitToggle('${x.id}','${today()}')"></i>${esc(x.name)}</span><span class="mut">${esc(x.tiny || '')}</span></div>`).join('') || `<p class="empty">還沒有習慣 · <a class="wl" onclick="go('habit')">建立第一個</a></p>`}</div>
+    ${focusOn ? `<p class="mut full" style="text-align:center;margin:4px 0 14px">這個月只看這幾項・<a class="wl" onclick="ui.homeAll=1;render()">顯示其他區塊</a></p>` : `
+    <div class="card"><h2>待辦事項</h2>${todo.slice(0, 6).map(todoRow).join('') || `<p class="empty">沒有待辦 · <a class="wl" onclick="go('bujo')">記下一件事</a></p>`}${todo.length > 6 ? `<p class="mut" style="margin:8px 0 0"><a class="wl" onclick="go('bujo')">還有 ${todo.length - 6} 項</a></p>` : ''}</div>
     ${weightCard('hw', false)}
     <div class="grid" style="margin-bottom:12px" data-b="stats"><div class="card" onclick="go('fit')" style="cursor:pointer"><div class="eyebrow">本週運動</div><div class="big">${f.min}<small class="mut"> / ${goalMin}</small></div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, f.min / goalMin * 100)}%"></i></div><div class="mut">連續 ${f.streak} 天</div></div>
     <div class="card" onclick="go('pfin')" style="cursor:pointer"><div class="eyebrow">個人支出</div><div class="big">${money(P.out)}</div><div class="bar" style="margin:8px 0 6px"><i style="width:${Math.min(100, P.out / P.budget * 100)}%"></i></div><div class="mut">結餘 ${money(P.inc - P.out)}</div></div></div>
     <div class="card"><h2>目前閱讀</h2>${rd.slice(0, 2).map(b => `<div class="book" style="margin:4px 0 8px"><div class="cover">${esc(b.title.slice(0, 10))}</div><div style="flex:1;min-width:0"><b>${esc(b.title)}</b><div class="mut">${esc(b.author)}</div>${b.pages ? `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, b.cur / b.pages * 100)}%"></i></div><div class="mut">${Math.round(b.cur / b.pages * 100)}%</div>` : ''}</div></div>`).join('') || `<p class="empty">還沒有在讀的書 · <a class="wl" onclick="go('know')">加入書單</a></p>`}</div>
   <div class="tiles full" data-b="tiles">${TABS.filter(x => x[0] !== 'home').map(([k, n]) => `<div class="tile" onclick="go('${k}')">${COVER[k]}<div class="tl"><div class="tn">${ICON[k]}${n}</div><div class="mut">${stat[k]}</div></div></div>`).join('')}</div>
-  <div class="card quote full" data-b="quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>`;
+  <div class="card quote full" data-b="quote" onclick="editSetting('quote','每日一句',DEF_QUOTE)">${esc(setting('quote', DEF_QUOTE))}</div>
+`}`;
 }
 // ---------- 回顧：每週／每月／每年，自動彙整各頁數據並與前一期比較；自己的反思＋ Claude 的評論 ----------
 // 期別代碼：週＝該週一日期（yyyy-MM-dd）、月＝yyyy-MM、年＝yyyy
