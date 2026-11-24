@@ -65,7 +65,7 @@ def stats(db, kind, key):
     mins = [max(man.get(d, 0), hk(d, 'exercise_min')) for d in days]
     steps = [hk(d, 'steps') for d in days if hk(d, 'steps')]
     tx = [x for x in of('txn') if not x.get('exported') and (x.get('ledger') or 'personal') == 'personal' and inr(x.get('date'))]
-    out = [x for x in tx if x.get('type') == 'out' and not any(k in (x.get('cat') or '') for k in ('代墊', '代買'))]
+    out = [x for x in tx if x.get('type') == 'out' and not any(k in (x.get('cat') or '') for k in ('代墊', '代買', '轉帳'))]
     cats = {}
     for x in out:
         cats[x.get('cat')] = cats.get(x.get('cat'), 0) + x['amount']
@@ -80,7 +80,7 @@ def stats(db, kind, key):
         'workouts': [f"{x['date']} {x.get('kind')} {x.get('min')}分" for x in of('workout') if inr(x.get('date'))],
         'avg_steps': round(sum(steps) / len(steps)) if steps else None,
         'weights': [f"{x['date']}:{x['kg']}" for x in w],
-        'personal_out': sum(x['amount'] for x in out), 'personal_in': sum(x['amount'] for x in tx if x.get('type') == 'in' and not any(k in (x.get('cat') or '') for k in ('代墊', '代買'))),
+        'personal_out': sum(x['amount'] for x in out), 'personal_in': sum(x['amount'] for x in tx if x.get('type') == 'in' and not any(k in (x.get('cat') or '') for k in ('代墊', '代買', '轉帳'))),
         'top_categories': sorted(cats.items(), key=lambda c: -c[1])[:8],
         'last_ledger_date': max([x.get('date', '') for x in of('txn')] or ['']),
         'family_out': sum(x.get('total') or 0 for x in fam) if kind != 'week' and fam else None,
