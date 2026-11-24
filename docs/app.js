@@ -1,4 +1,4 @@
-const APP_VERSION = '1.39.0';
+const APP_VERSION = '1.39.1';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -466,7 +466,7 @@ function rptView() {
   ${H.length ? `<p class="mut" style="margin:8px 0 0">股票未實現損益 ${invCost ? (inv - invCost >= 0 ? '+' : '−') + money(Math.abs(inv - invCost)) : '—'}（截至 ${esc(invAt)}），沒有賣出就不算進結餘。</p>` : ''}</div>`;
   return bs + is + `<p class="mut" style="margin:0 2px 12px">這頁只做整理與計算，不提供投資建議。</p>`;
 }
-const pfinSeg = () => seg('pfin', [['led', '收支'], ['ana', '分析'], ['rpt', '報表'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
+const pfinSeg = () => seg('pfin', [['led', '收支'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊'], ['ana', '分析'], ['rpt', '報表（資產負債・損益）']]);
 // ---------- 財務分析：以近幾個完整月份算平均收支、儲蓄率、錢花在哪、緊急備用金與投資進度；評論由 Claude 撰寫（advice_pfin） ----------
 // 分類分組：存起來的錢（投資、儲蓄）不算消費；公司代墊另計
 const FIN_SAVE = ['投資', '儲蓄'], FIN_NEED = /^(家庭開支|H-|醫療|保險|個人交通|個人-日用品|牙套|電話|捷運|機車|計程車|家裡用品|iCloud|Google|藥|醫生)/; // 含 2026/5 以前舊記帳表的分類名稱
