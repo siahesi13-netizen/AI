@@ -1,4 +1,4 @@
-const APP_VERSION = '1.39.1';
+const APP_VERSION = '1.40.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -338,7 +338,7 @@ const prevMonth = m => { const d = new Date(m + '-01T00:00:00'); d.setMonth(d.ge
 
 // ---------- 個人財務（手動記帳；分類沿用自己的記帳表，各分類可設預算） ----------
 const PFIN = {
-  out: ['個人-外食', '個人-日用品', '個人-保養品', '個人-化妝品', '個人-髮衣鞋包帽', '個人交通-大眾交通', '個人交通-機車', '個人交通-計程車', '交際-送禮請客', '交際-家庭送禮', '家庭開支-食材費', '家庭開支-外食', '家庭開支-家庭用品', '家庭開支-貓咪費用', '醫療', '學習', '保險通訊訂閱', '投資', '儲蓄', '公司代墊款', '代買', '其他'],
+  out: ['個人-外食', '個人-日用品', '個人-保養品', '個人-化妝品', '個人-髮衣鞋包帽', '個人交通-大眾交通', '個人交通-機車', '個人交通-計程車', '交際-送禮請客', '交際-家庭送禮', '家庭開支-食材費', '家庭開支-外食', '家庭開支-家庭用品', '家庭開支-貓咪費用', '醫療', '學習', '個人-家具', '保險通訊訂閱', '投資', '儲蓄', '公司代墊款', '代買', '其他'],
   inc: ['薪水', '公司代墊回款', '代買回款', '其他'], def: 20000
 };
 // 期間鍵：'yyyy-MM' 單月、'yyyy' 整年、'yyyy~' 該年迄今（1/1 到今天的同月同日）、'all' 總計
@@ -509,6 +509,21 @@ function finAddView() {
   <div class="row"><input id="ft_k" list="ft_kl" placeholder="帳戶（選填）"><datalist id="ft_kl">${accts.map(a => `<option value="${esc(a)}">`).join('')}</datalist><input id="ft_n" placeholder="備註（選填）"></div><button class="b" onclick="finAdd()">記帳</button></div>
   <div class="card" data-b="recent"><h2>在平台記的帳</h2><p class="mut" style="margin:0 0 6px">還沒匯入 Numbers ${pend.length} 筆${ex.length ? `・已匯入 ${ex.length} 筆（已匯入的不再重複計入統計）` : ''}</p>${pend.map(row).join('')}${ex.length ? `${pend.length ? '<div style="height:8px"></div>' : ''}${ex.map(row).join('')}<button class="b g" style="margin-top:10px" onclick="finTidy()">整理已匯入（${ex.length} 筆）</button>` : ''}${recent.length ? '' : '<p class="empty">在這裡記的帳會列在這裡（從記帳檔匯入的不列出）</p>'}${td ? `<p class="mut" style="margin:10px 0 0">以上今天的支出合計 ${money(td)}</p>` : ''}</div>`;
 }
+// 年度預算：幾個分類合成一組、用一整年的額度控制（送禮、保養化妝、衣服這類不是每個月平均發生的支出）。setting ybudget = [{ name, cats, amount }]
+window.ybEdit = i => { const L = setting('ybudget', []), x = L[i]; if (!x) return; const a = prompt(`「${x.name}」一年的預算`, x.amount); if (a === null) return; setSetting('ybudget', L.map((y, k) => k === i ? { ...y, amount: Math.max(0, +a || 0) } : y)); render(); };
+function ybCard(y) {
+  const A = setting('ybudget', []), L = A.filter(g => (g.from || '0') <= y); if (!A.length) return '';
+  // 今年還沒開始的年度預算（例如明年才開始）：先列出來，附上今年實際花多少當參考
+  if (!L.length) { if (y !== today().slice(0, 4)) return ''; const ny = A.map(g => g.from).sort()[0], T0 = ledger().filter(x => (x.ledger || 'personal') === 'personal' && x.type === 'out' && x.date.startsWith(y));
+    return `<div class="card" data-b="ybudget"><h2>${esc(ny)} 年度預算 <span class="mut" style="font-size:13px;font-weight:400">${esc(ny)} 年 1 月開始算</span></h2>${A.map((g, i) => `<div class="item"><span><b>${esc(g.name)}</b> <span class="mut">${g.cats.map(esc).join('、')}・今年花了 ${money(T0.filter(x => g.cats.includes(x.cat)).reduce((a, x) => a + x.amount, 0))}</span></span><a class="wl" onclick="ybEdit(${i})">${money(g.amount)}</a></div>`).join('')}<p class="mut" style="margin:8px 0 0">合計 ${money(A.reduce((a, g) => a + g.amount, 0))}，平均每月 ${money(A.reduce((a, g) => a + g.amount, 0) / 12)}。點金額可以修改。</p></div>`; }
+  const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && x.type === 'out' && x.date.startsWith(y)), cur = y === today().slice(0, 4);
+  const el = cur ? (Date.now() - new Date(+y, 0, 1)) / (new Date(+y + 1, 0, 1) - new Date(+y, 0, 1)) : 1, left = cur ? 12 - (+today().slice(5, 7)) + 1 : 0;
+  return `<div class="card" data-b="ybudget"><h2>${y} 年度預算</h2>${L.map((g, i) => { const used = T.filter(x => g.cats.includes(x.cat)).reduce((a, x) => a + x.amount, 0), r = g.amount - used, ov = used > g.amount, pace = !ov && cur && used > g.amount * el;
+    return `<div style="margin:8px 0 12px"><div class="item" style="border:0;padding:0"><span><b>${esc(g.name)}</b> <span class="mut">${g.cats.map(esc).join('、')}</span></span><a class="wl" onclick="ybEdit(${i})">${money(g.amount)}</a></div>
+    <div class="bar" style="margin:6px 0 4px"><i style="width:${g.amount ? Math.min(100, used / g.amount * 100) : 0}%;background:${ov ? 'var(--bad)' : 'var(--bar)'}"></i></div>
+    <div class="mut">已用 <b class="${ov ? 'bad' : ''}">${money(used)}</b>・${ov ? `<b class="bad">超出 ${money(-r)}</b>` : `剩 ${money(r)}${cur && left ? `，之後平均每月可用 ${money(r / left)}` : ''}`}${pace ? '・<span class="bad">花得比時間快</span>' : ''}</div></div>`; }).join('')}
+  ${cur ? `<p class="mut" style="margin:0">今年已過 ${Math.round(el * 100)}%。點金額可以修改。</p>` : ''}</div>`;
+}
 function fin() {
   if (sub.pfin === 'inv') return pfinSeg() + invest();
   if (sub.pfin === 'add') return pfinSeg() + finAddView();
@@ -548,6 +563,7 @@ function fin() {
   <div class="grid" style="margin-top:8px"><div><div class="eyebrow">收入</div><div class="big ok">${money(inc)}</div></div><div><div class="eyebrow">支出</div><div class="big bad">${money(out)}</div></div></div>
   <p style="margin:10px 0 8px">結餘 <b class="${inc - out >= 0 ? 'ok' : 'bad'}">${money(inc - out)}</b></p>
   <div class="mut"><a class="wl" onclick="finBudget()">${isY ? `${nM} 個月總預算` : '總預算'} ${money(budget)}</a>・已用 ${Math.round(out / budget * 100)}%</div><div class="bar" style="margin-top:6px"><i style="width:${Math.min(100, out / budget * 100)}%;background:${out > budget ? 'var(--bad)' : 'var(--bar)'}"></i></div></div>
+  ${ybCard(m === 'all' ? today().slice(0, 4) : m.slice(0, 4))}
   ${trendCard}
   ${cats.length ? `<div class="card" data-b="cats"><h2>支出分類</h2>${pieCall(cats, 8)}${pieTable(cats, out, outPie.colors, { id: 'out', det: 'pout', limit: 10, head: '預算', cls: (c, v, i) => B[c] && v > B[c] ? 'over' : i === 0 && v > 0 ? 'top' : '', tag: (c, v, i) => (i === 0 && v > 0 ? '<em class="tagx">最多</em>' : '') + (B[c] && v > B[c] ? '<em class="tagx b">超預算</em>' : ''), extra: (c, v) => `<a class="wl mut" onclick="finCatBudget('${esc(c)}')">${B[c] ? `<span class="${v > B[c] ? 'bad' : ''}">${money(B[c])}${v > B[c] ? '<br>超出 ' + money(v - B[c]) : ''}</span>` : '設定'}</a>` })}</div>` : ''}
   ${incs.length ? `<div class="card" data-b="incs"><h2>收入分類</h2>${pieCall(incs, 8)}${pieTable(incs, inc, pieOf(incs, 8).colors, { id: 'inc', det: 'pinc', limit: 10, tag: (c, v, i) => i === 0 && v > 0 ? '<em class="tagx">最多</em>' : '' })}</div>` : ''}` + analysis + `<div class="card" data-b="list"><details><summary class="sum2">明細 <span class="mut">${t.length} 筆・點一下展開</span></summary>${t.sort((a, b) => b.date.localeCompare(a.date)).map(x => `<div class="item"><span>${x.date.slice(isY ? 2 : 5)} ${esc(x.cat)} <span class="mut">${esc([x.note, x.acct].filter(Boolean).join('・'))}</span></span><span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b><button class="x" onclick="del('${x.id}')">✕</button></span></div>`).join('') || '<p class="empty">尚無帳目</p>'}</details></div>`;
