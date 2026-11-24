@@ -1,4 +1,4 @@
-const APP_VERSION = '1.38.2';
+const APP_VERSION = '1.39.0';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -415,7 +415,58 @@ function advView() {
   <div class="card" data-b="list"><details ${pSingle(key) ? 'open' : ''}><summary class="sum2">${pLabel(key)}明細 <span class="mut">${T.length} 筆・用上方的年份、月份選單切換</span></summary>${T.map(x => `<div class="item"><span>${x.date.slice(2)} ${esc(x.note || x.cat)} <span class="mut">${esc(x.acct || '')}</span></span><b class="${x.type === 'in' ? 'ok' : ''}">${x.type === 'in' ? '+' : '-'}${money(x.amount)}</b></div>`).join('') || '<p class="empty">這段期間沒有代墊紀錄</p>'}</details></div>
   <p class="mut" style="margin:0 2px 12px">資料取自記帳裡分類名稱含「代墊」的帳目${start ? `，只計算 ${esc(start)} 之後的` : ''}。<a class="wl" onclick="advStart()">${start ? '修改起算日' : '設定起算日'}</a></p>`;
 }
-const pfinSeg = () => seg('pfin', [['led', '收支'], ['ana', '分析'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
+// ---------- 財務報表：資產負債表（今天）與損益表（選期間） ----------
+// 資產負債表：手填項目（銀行、現金、信用卡未繳、其他欠款）存在 setting bs_items；股票市值取自投資頁；欠奇奇取自「子奇代付」帳戶；公司零用金與應收代墊取自代墊頁的計算
+window.bsAdd = side => { const n = prompt(side === 'a' ? '資產名稱（例：台新活存、現金、定存）' : '負債名稱（例：Cube 卡未繳、欠姑姑）'); if (!n || !n.trim()) return; const a = prompt('金額', ''); if (a === null) return; setSetting('bs_items', [...setting('bs_items', []), { side, name: n.trim(), amount: Math.abs(+a || 0), at: today() }]); render(); };
+window.bsEdit = i => { const L = setting('bs_items', []), x = L[i]; if (!x) return; const a = prompt(`${x.name} 目前金額`, x.amount); if (a === null) return; setSetting('bs_items', L.map((y, k) => k === i ? { ...y, amount: Math.abs(+a || 0), at: today() } : y)); render(); };
+window.bsDel = i => { const L = setting('bs_items', []); if (!L[i] || !confirm(`刪除「${L[i].name}」這個項目？`)) return; setSetting('bs_items', L.filter((_, k) => k !== i)); render(); };
+window.isPick = () => { ui.isk = pKey($('#isPick_y').value, $('#isPick_m').value); render(); };
+function advCalc() {
+  const start = setting('advstart', ''), A = ledger().filter(x => (x.ledger || 'personal') === 'personal' && /代墊/.test(x.cat || '') && (!start || x.date >= start)), fund = +setting('advfund', 0) || 0, CL = setting('advclaim', null);
+  if (!CL) return { fund, pending: 0, un: 0, hand: fund };
+  const un = A.filter(x => x.type === 'out' && x.date > CL.cutoff && !(CL.claimed || []).some(c => c.date === x.date && c.amount === x.amount)).reduce((a, x) => a + x.amount, 0);
+  const pending = CL.items ? CL.items.filter(x => !x.done).reduce((a, x) => a + x.amount, 0) : CL.pending || 0;
+  return { fund, pending, un, hand: fund - pending - un };
+}
+function rptView() {
+  const L = setting('bs_items', []).map((x, i) => ({ ...x, i })), H = all('holding'), inv = H.reduce((a, h) => a + (h.value || 0), 0), invCost = H.reduce((a, h) => a + (h.cost || 0), 0), invAt = H.map(h => h.at || '').sort().pop() || '';
+  const qi = ledger().filter(x => x.acct === '子奇代付').reduce((a, x) => a + (x.type === 'in' ? x.amount : -x.amount), 0), owe = Math.max(0, -qi), ad = advCalc();
+  const row = (name, v, sub, act) => `<div class="item"><span>${name}${sub ? ` <span class="mut">${sub}</span>` : ''}</span><span><b>${money(v)}</b>${act || ''}</span></div>`;
+  const man = side => L.filter(x => x.side === side).map(x => row(`<a class="wl" onclick="bsEdit(${x.i})">${esc(x.name)}</a>`, x.amount, esc((x.at || '').slice(5)) + ' 更新', `<button class="x" onclick="bsDel(${x.i})">✕</button>`)).join('');
+  const aMan = L.filter(x => x.side === 'a').reduce((a, x) => a + x.amount, 0), lMan = L.filter(x => x.side === 'l').reduce((a, x) => a + x.amount, 0);
+  const assets = aMan + inv + ad.hand + ad.pending + ad.un, liab = lMan + owe + ad.fund, net = assets - liab;
+  const bs = `<div class="card" data-b="bs"><h2>資產負債表 <span class="mut" style="font-size:13px;font-weight:400">${today()}</span></h2>
+  <div class="grid"><div><div class="eyebrow">資產</div><div class="big">${money(assets)}</div></div><div><div class="eyebrow">負債</div><div class="big bad">${money(liab)}</div></div></div>
+  <div style="margin:10px 0 4px;padding:10px 12px;border-radius:10px;background:var(--tagbg)"><div class="eyebrow">淨資產（資產 − 負債）</div><div class="big ${net < 0 ? 'bad' : 'ok'}">${money(net)}</div></div>
+  <h2 style="margin-top:14px">資產</h2>${man('a') || '<p class="mut" style="margin:4px 0">還沒填銀行存款、現金。點下面「新增資產」，填今天的餘額。</p>'}
+  ${row('股票（投資頁市值）', inv, `成本 ${money(invCost)}${invAt ? '・' + esc(invAt.slice(5)) + ' 更新' : ''}`)}
+  ${ad.fund ? row('手上的公司零用金', ad.hand, '代墊頁推算') + row('應收公司代墊', ad.pending + ad.un, `已請款 ${money(ad.pending)}・未請款 ${money(ad.un)}`) : ''}
+  <p class="mut" style="margin:6px 0 0"><a class="wl" onclick="bsAdd('a')">新增資產</a>（現金和存款只填自己的錢，不含公司零用金）</p>
+  <h2 style="margin-top:14px">負債</h2>${man('l')}
+  ${owe ? row('欠奇奇', owe, '記帳「子奇代付」帳戶') : ''}
+  ${ad.fund ? row('公司零用金（公司的錢）', ad.fund, '啾寶＋公司週轉金') : ''}
+  <p class="mut" style="margin:6px 0 0"><a class="wl" onclick="bsAdd('l')">新增負債</a>（信用卡未繳、跟家人借的錢）</p>
+  ${ad.fund ? `<p class="mut" style="margin:10px 0 0">公司零用金是公司的錢：手上的零用金加應收代墊，等於公司給的 ${money(ad.fund)}，對淨資產沒有影響。老闆零用金另外算，不列在這裡。</p>` : ''}</div>`;
+  // 損益表：收入扣掉消費支出＝本期結餘；投資、儲蓄是把結餘存起來，不算支出；代墊、代買、轉帳不算
+  const years = [...new Set(ledger().map(x => x.date.slice(0, 4)))].sort().reverse(), key = ui.isk || today().slice(0, 4) + '~', f = pIn(key);
+  const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && f(x.date) && !/代墊|代買|轉帳/.test(x.cat || ''));
+  const grp = ty => { const o = {}; T.filter(x => x.type === ty).forEach(x => o[x.cat || '其他'] = (o[x.cat || '其他'] || 0) + x.amount); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const inc = grp('in'), out = grp('out').filter(([c]) => !FIN_SAVE.includes(c)), sv = grp('out').filter(([c]) => FIN_SAVE.includes(c));
+  const S = r => r.reduce((a, x) => a + x[1], 0), tInc = S(inc), need = out.filter(([c]) => FIN_NEED.test(c)), want = out.filter(([c]) => !FIN_NEED.test(c)), tOut = S(out), res = tInc - tOut, tSv = S(sv);
+  const lines = r => r.map(([c, v]) => `<div class="item" style="padding-left:12px"><span class="mut">${esc(c)}</span><span>${money(v)}</span></div>`).join('');
+  const blk = (t, r, cls) => `<details><summary class="item" style="cursor:pointer"><span>${t} <span class="mut">${r.length} 類</span></span><b class="${cls || ''}">${money(S(r))}</b></summary>${lines(r)}</details>`;
+  const is = `<div class="card" data-b="is"><h2>損益表</h2>${pSelect(key, years, 'isPick')}
+  <p class="mut" style="margin:8px 0 6px">${pLabel(key)}・不含公司代墊、代買、轉帳</p>
+  ${blk('收入', inc, 'ok')}
+  ${blk('必要支出', need, 'bad')}${blk('彈性支出', want, 'bad')}
+  <div class="item"><span><b>消費支出合計</b></span><b class="bad">${money(tOut)}</b></div>
+  <div style="margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--tagbg)"><div class="eyebrow">本期結餘（收入 − 消費支出）</div><div class="big ${res < 0 ? 'bad' : 'ok'}">${res < 0 ? '−' : ''}${money(Math.abs(res))}</div>${tInc ? `<div class="mut">結餘率 ${Math.round(res / tInc * 100)}%</div>` : ''}</div>
+  ${blk('存起來（投資＋儲蓄）', sv)}
+  <div class="item"><span>結餘扣掉存起來的錢 <span class="mut">${res - tSv < 0 ? '不夠的部分動用了存款或紅包' : '留在帳戶裡'}</span></span><b class="${res - tSv < 0 ? 'bad' : ''}">${res - tSv < 0 ? '−' : ''}${money(Math.abs(res - tSv))}</b></div>
+  ${H.length ? `<p class="mut" style="margin:8px 0 0">股票未實現損益 ${invCost ? (inv - invCost >= 0 ? '+' : '−') + money(Math.abs(inv - invCost)) : '—'}（截至 ${esc(invAt)}），沒有賣出就不算進結餘。</p>` : ''}</div>`;
+  return bs + is + `<p class="mut" style="margin:0 2px 12px">這頁只做整理與計算，不提供投資建議。</p>`;
+}
+const pfinSeg = () => seg('pfin', [['led', '收支'], ['ana', '分析'], ['rpt', '報表'], ['inv', '投資'], ['add', '記帳'], ['adv', '代墊']]);
 // ---------- 財務分析：以近幾個完整月份算平均收支、儲蓄率、錢花在哪、緊急備用金與投資進度；評論由 Claude 撰寫（advice_pfin） ----------
 // 分類分組：存起來的錢（投資、儲蓄）不算消費；公司代墊另計
 const FIN_SAVE = ['投資', '儲蓄'], FIN_NEED = /^(家庭開支|H-|醫療|保險|個人交通|個人-日用品|牙套|電話|捷運|機車|計程車|家裡用品|iCloud|Google|藥|醫生)/; // 含 2026/5 以前舊記帳表的分類名稱
@@ -463,6 +514,7 @@ function fin() {
   if (sub.pfin === 'add') return pfinSeg() + finAddView();
   if (sub.pfin === 'ana') return pfinSeg() + anaView();
   if (sub.pfin === 'adv') return pfinSeg() + advView();
+  if (sub.pfin === 'rpt') return pfinSeg() + rptView();
   const m = ui.m || month(today()), isY = !pSingle(m), t = txns(m), { inc, out, budget: bud } = finSum(m), by = {}, B1 = setting('catbudget', {});
   // 整年檢視：預算乘上該年有記帳的月數
   const yms = [...new Set(t.map(x => month(x.date)))].sort(), nM = isY ? Math.max(1, yms.length) : 1, budget = bud * nM, B = {}; Object.keys(B1).forEach(c => B[c] = B1[c] * nM);
