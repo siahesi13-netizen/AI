@@ -1,4 +1,4 @@
-const APP_VERSION = '1.38.1';
+const APP_VERSION = '1.38.2';
 // LifeHub：離線優先 + 與伺服器雙向同步（last-write-wins）
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -426,7 +426,7 @@ function anaView() {
   if (typeof P === 'string') { for (let m = 1; m <= 12; m++) { const k = P.slice(1) + '-' + String(m).padStart(2, '0'); if (k <= cur) ms.unshift(k); } }
   else for (let d = new Date(cur + '-01T00:00:00'), i = 0; i < P; i++) { d.setMonth(d.getMonth() - 1); ms.push(iso(d).slice(0, 7)); }
   const n = ms.length || 1;
-  const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && ms.includes(month(x.date)) && !/代墊|代買/.test(x.cat || ''));
+  const T = ledger().filter(x => (x.ledger || 'personal') === 'personal' && ms.includes(month(x.date)) && !/代墊|代買|轉帳/.test(x.cat || ''));
   const sum = f => T.filter(f).reduce((a, x) => a + x.amount, 0);
   const inc = sum(x => x.type === 'in'), sal = sum(x => x.type === 'in' && x.cat === '薪水'), saved = sum(x => x.type === 'out' && FIN_SAVE.includes(x.cat));
   const spend = sum(x => x.type === 'out' && !FIN_SAVE.includes(x.cat)), need = sum(x => x.type === 'out' && FIN_NEED.test(x.cat || '')), want = spend - need;
@@ -473,16 +473,16 @@ function fin() {
   const incs = Object.entries(byIn).sort((a, b) => b[1] - a[1]), outPie = pieOf(cats, 8), detOf = ty => c => t.filter(x => x.type === ty && x.cat === c).map(x => [x.date, x.note || x.cat, x.amount, x.acct || '']);
   setDet('pout', pLabel(m) + '・支出', cats, detOf('out')); setDet('pinc', pLabel(m) + '・收入', incs, detOf('in'));
   // 分析：公司代墊款是先墊後還，計算實際收支與儲蓄率時排除
-  const isAdv = x => /代墊|代買/.test(x.cat), rOut = t.filter(x => x.type === 'out' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), rInc = t.filter(x => x.type === 'in' && !isAdv(x)).reduce((a, x) => a + x.amount, 0);
+  const isAdv = x => /代墊|代買|轉帳/.test(x.cat), rOut = t.filter(x => x.type === 'out' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), rInc = t.filter(x => x.type === 'in' && !isAdv(x)).reduce((a, x) => a + x.amount, 0);
   // 走勢圖：單月看該年 1–12 月（標出所選月份）；整年或迄今看有記帳的各月；總計看各年度
   const ms = m === 'all' ? years.slice().reverse() : isY ? yms.slice() : []; if (!isY) for (let i = 1; i <= 12; i++) ms.push(m.slice(0, 5) + String(i).padStart(2, '0'));
   const sums = ms.map(k => { const q = txns(k).filter(x => !isAdv(x)); return [q.filter(x => x.type === 'in').reduce((a, x) => a + x.amount, 0), q.filter(x => x.type === 'out').reduce((a, x) => a + x.amount, 0)]; });
   const pb = {}; (pPrev(m) ? txns(pPrev(m)) : []).filter(x => x.type === 'out').forEach(x => pb[x.cat] = (pb[x.cat] || 0) + x.amount);
-  const up = Object.keys(by).filter(c => !/代墊|代買/.test(c)).map(c => [c, by[c] - (pb[c] || 0)]).sort((a, b) => b[1] - a[1])[0];
+  const up = Object.keys(by).filter(c => !/代墊|代買|轉帳/.test(c)).map(c => [c, by[c] - (pb[c] || 0)]).sort((a, b) => b[1] - a[1])[0];
   const over = Object.keys(B).filter(c => (by[c] || 0) > B[c]).sort((a, b) => (by[b] - B[b]) - (by[a] - B[a]));
-  const days = isY ? yms.reduce((a, k) => a + (k === month(today()) ? +today().slice(8) : new Date(+k.slice(0, 4), +k.slice(5), 0).getDate()), 0) || 1 : m === month(today()) ? +today().slice(8) : new Date(+m.slice(0, 4), +m.slice(5), 0).getDate(), top = cats.filter(([c]) => !/代墊|代買/.test(c))[0];
+  const days = isY ? yms.reduce((a, k) => a + (k === month(today()) ? +today().slice(8) : new Date(+k.slice(0, 4), +k.slice(5), 0).getDate()), 0) || 1 : m === month(today()) ? +today().slice(8) : new Date(+m.slice(0, 4), +m.slice(5), 0).getDate(), top = cats.filter(([c]) => !/代墊|代買|轉帳/.test(c))[0];
   const yk = pYoY(m), LT = yk ? txns(yk) : [], lInc = LT.filter(x => x.type === 'in' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), lOut = LT.filter(x => x.type === 'out' && !isAdv(x)).reduce((a, x) => a + x.amount, 0), lBy = {}, rBy = {};
-  LT.filter(x => x.type === 'out' && !isAdv(x)).forEach(x => lBy[x.cat] = (lBy[x.cat] || 0) + x.amount); Object.keys(by).filter(c => !/代墊|代買/.test(c)).forEach(c => rBy[c] = by[c]);
+  LT.filter(x => x.type === 'out' && !isAdv(x)).forEach(x => lBy[x.cat] = (lBy[x.cat] || 0) + x.amount); Object.keys(by).filter(c => !/代墊|代買|轉帳/.test(c)).forEach(c => rBy[c] = by[c]);
   const yoy = !yk ? '' : `<div class="card" data-b="yoy"><h2>與去年同期比較</h2><p class="mut" style="margin:0 0 4px">${pLabel(m)} 對 ${pLabel(yk)}（皆不含公司代墊）</p>${LT.length ? cmpRow('收入', rInc, lInc, false) + cmpRow('支出', rOut, lOut, true) + cmpRow('結餘', rInc - rOut, lInc - lOut, false) + cmpCats(rBy, lBy, 6) + `<p class="mut" style="margin:8px 0 0">分類名稱在不同年度有調整過，名稱不同的分類會分開列。</p>` : '<p class="empty">去年同期沒有記帳資料</p>'}</div>`;
   const trendCard = !t.length ? '' : `<div class="card" data-b="trend"><h2>${m === 'all' ? '各年度收支' : isY ? `${pLabel(m)}各月收支` : `${m.slice(0, 4)} 年各月收支`}</h2>${pairBars(ms.map(k => m === 'all' ? k : +k.slice(5) + (ms.length > 8 ? '' : ' 月')), sums.map(x => x[0]), sums.map(x => x[1]), isY ? -1 : +m.slice(5) - 1, i => `finMonth('${ms[i]}')`)}${legend('收入', '支出（皆不含公司代墊）')}</div>`;
   const analysis = t.length ? tips([
@@ -1020,7 +1020,7 @@ function rvStats(a, b, k) {
     steps: steps.length ? Math.round(steps.reduce((x, y) => x + y, 0) / steps.length) : null,
     kcal: kc.length ? Math.round(kc.reduce((x, y) => x + y, 0) / kc.length) : null,
     kg: W.length ? W[W.length - 1].kg : null, kgD: W.length > 1 ? Math.round((W[W.length - 1].kg - W[0].kg) * 10) / 10 : null,
-    out: t.filter(x => x.type === 'out' && !/代墊|代買/.test(x.cat)).reduce((x, y) => x + y.amount, 0), inc: t.filter(x => x.type === 'in' && !/代墊|代買/.test(x.cat)).reduce((x, y) => x + y.amount, 0),
+    out: t.filter(x => x.type === 'out' && !/代墊|代買|轉帳/.test(x.cat)).reduce((x, y) => x + y.amount, 0), inc: t.filter(x => x.type === 'in' && !/代墊|代買|轉帳/.test(x.cat)).reduce((x, y) => x + y.amount, 0),
     fam: k !== 'week' && fm.length ? fm.reduce((x, y) => x + (y.total || 0), 0) : null,
     todo: all('todo').filter(x => x.done && inR(x.doneAt)).length,
     books: all('book').filter(x => x.status === 'done' && inR(x.statusAt)).length,
